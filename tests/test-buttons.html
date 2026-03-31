@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>按钮测试</title>
+</head>
+<body>
+  <h1>按钮事件测试</h1>
+  
+  <button id="exportVariableConfigIOS">导出 iOS 变量配置</button>
+  <button id="importVariableConfigIOS">导入 iOS 变量配置</button>
+  <button id="templateVariableConfigIOS">模板库</button>
+  <button id="shareVariableConfigIOS">生成分享</button>
+  
+  <div id="log" style="margin-top: 20px; border: 1px solid #ccc; padding: 10px; min-height: 200px;"></div>
+  
+  <script>
+    function log(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + msg + '<br>';
+      console.log(msg);
+    }
+    
+    log('页面加载完成');
+    
+    // 测试按钮是否存在
+    const btn1 = document.getElementById('exportVariableConfigIOS');
+    const btn2 = document.getElementById('importVariableConfigIOS');
+    const btn3 = document.getElementById('templateVariableConfigIOS');
+    const btn4 = document.getElementById('shareVariableConfigIOS');
+    
+    log('按钮1存在: ' + (btn1 !== null));
+    log('按钮2存在: ' + (btn2 !== null));
+    log('按钮3存在: ' + (btn3 !== null));
+    log('按钮4存在: ' + (btn4 !== null));
+    
+    // 绑定事件
+    if (btn1) {
+      btn1.addEventListener('click', () => {
+        log('导出按钮被点击！');
+        alert('导出按钮点击成功！');
+      });
+      log('导出按钮事件已绑定');
+    }
+    
+    if (btn2) {
+      btn2.addEventListener('click', () => {
+        log('导入按钮被点击！');
+        alert('导入按钮点击成功！');
+      });
+      log('导入按钮事件已绑定');
+    }
+    
+    if (btn3) {
+      btn3.addEventListener('click', () => {
+        log('模板库按钮被点击！');
+        alert('模板库按钮点击成功！');
+      });
+      log('模板库按钮事件已绑定');
+    }
+    
+    if (btn4) {
+      btn4.addEventListener('click', () => {
+        log('分享按钮被点击！');
+        alert('分享按钮点击成功！');
+      });
+      log('分享按钮事件已绑定');
+    }
+  </script>
+</body>
+</html>

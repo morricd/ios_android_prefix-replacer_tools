@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Swift 类前缀替换工具</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔄 iOS/Android 项目重构工具</h1>
+      <p class="subtitle">批量替换 Swift 类前缀 / Android 包名和类前缀，完整复制项目结构</p>
+    </header>
+
+    <main>
+      <!-- 文件夹选择 -->
+      <section class="section">
+        <h2>📁 选择文件夹</h2>
+        
+        <div class="input-group">
+          <label for="sourcePath">源文件夹:</label>
+          <div class="path-selector">
+            <input type="text" id="sourcePath" placeholder="选择包含 Swift 文件的源文件夹" readonly>
+            <button id="selectSource" class="btn btn-secondary">选择...</button>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="targetPath">目标文件夹:</label>
+          <div class="path-selector">
+            <input type="text" id="targetPath" placeholder="选择保存处理后文件的目标文件夹" readonly>
+            <button id="selectTarget" class="btn btn-secondary">选择...</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 平台选择 -->
+      <section class="section">
+        <h2>📱 选择平台</h2>
+        
+        <div class="platform-selector">
+          <label class="platform-option">
+            <input type="radio" name="platform" value="ios" checked>
+            <span class="platform-label">
+              <span class="platform-icon">🍎</span>
+              <span>iOS (Swift)</span>
+            </span>
+          </label>
+          
+          <label class="platform-option">
+            <input type="radio" name="platform" value="android">
+            <span class="platform-label">
+              <span class="platform-icon">🤖</span>
+              <span>Android (Kotlin/Java)</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- iOS 配置 -->
+      <section class="section" id="iosConfig">
+        <h2>✏️ iOS 配置 - 类前缀</h2>
+        
+        <div class="prefix-inputs">
+          <div class="input-group">
+            <label for="oldPrefix">旧前缀:</label>
+            <input type="text" id="oldPrefix" placeholder="例如: ABC" class="prefix-input">
+            <span class="hint">要被替换的类前缀</span>
+          </div>
+
+          <div class="arrow">→</div>
+
+          <div class="input-group">
+            <label for="newPrefix">新前缀:</label>
+            <input type="text" id="newPrefix" placeholder="例如: XYZ" class="prefix-input">
+            <span class="hint">新的类前缀</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="prefix-optional">
+          <label class="checkbox-label">
+            <input type="checkbox" id="renameFilesAndGroups">
+            <span>同时修改文件和 Xcode Group 前缀（可选）</span>
+          </label>
+        </div>
+
+        <div class="prefix-optional" style="margin-top: 10px;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="copyPodsIOS">
+            <span>复制 Pods 目录（可选）</span>
+          </label>
+        </div>
+
+        <div id="filesGroupsInputs" class="prefix-inputs" style="display: none; margin-top: 15px;">
+          <div class="input-group">
+            <label for="oldFileGroupPrefix">旧文件前缀:</label>
+            <input type="text" id="oldFileGroupPrefix" placeholder="例如: ABC" class="prefix-input">
+            <span class="hint">文件和 Group 的旧前缀</span>
+          </div>
+
+          <div class="arrow">→</div>
+
+          <div class="input-group">
+            <label for="newFileGroupPrefix">新文件前缀:</label>
+            <input type="text" id="newFileGroupPrefix" placeholder="例如: XYZ" class="prefix-input">
+            <span class="hint">文件和 Group 的新前缀</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="variable-modify-section">
+          <label class="checkbox-label">
+            <input type="checkbox" id="modifyVariablesIOS">
+            <span>修改类变量值（可选）</span>
+          </label>
+
+          <div id="variableModifyOptionsIOS" style="display: none; margin-top: 15px;">
+            <div class="config-file-selector" style="margin-bottom: 15px;">
+              <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <select id="variableConfigSelectIOS" class="config-select">
+                  <option value="">-- 选择配置文件或新建 --</option>
+                </select>
+                <button id="saveVariableConfigIOS" class="save-config-button">💾 保存</button>
+                <button id="deleteVariableConfigIOS" class="delete-config-button">🗑️ 删除</button>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button id="exportVariableConfigIOS" class="export-button">📤 导出</button>
+                <button id="importVariableConfigIOS" class="import-button">📥 导入</button>
+                <button id="templateVariableConfigIOS" class="template-button">📚 模板库</button>
+                <button id="shareVariableConfigIOS" class="share-button">🔗 生成分享</button>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <label style="font-weight: 500;">类和变量修改规则:</label>
+                <button id="addClassRuleIOS" class="add-button">+ 添加类</button>
+              </div>
+              
+              <div id="classRuleListIOS" class="class-rule-list">
+                <!-- 动态添加的类规则 -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="image-replace-section">
+          <label class="checkbox-label">
+            <input type="checkbox" id="replaceImagesIOS">
+            <span>替换图片资源（可选）</span>
+          </label>
+
+          <div id="imageReplaceOptionsIOS" style="display: none; margin-top: 15px;">
+            <div class="config-file-selector" style="margin-bottom: 15px;">
+              <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <select id="imageConfigSelectIOS" class="config-select">
+                  <option value="">-- 选择配置文件或新建 --</option>
+                </select>
+                <button id="saveImageConfigIOS" class="save-config-button">💾 保存</button>
+                <button id="deleteImageConfigIOS" class="delete-config-button">🗑️ 删除</button>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button id="exportImageConfigIOS" class="export-button">📤 导出</button>
+                <button id="importImageConfigIOS" class="import-button">📥 导入</button>
+                <button id="templateImageConfigIOS" class="template-button">📚 模板库</button>
+                <button id="shareImageConfigIOS" class="share-button">🔗 生成分享</button>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <label>图片资源文件夹:</label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="imageFolderPathIOS" readonly placeholder="选择图片文件夹" class="prefix-input" style="flex: 1;">
+                <button id="selectImageFolderIOS" class="select-button">选择文件夹</button>
+              </div>
+              <span class="hint">包含要替换的新图片的文件夹</span>
+            </div>
+
+            <div style="margin-top: 15px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <label style="font-weight: 500;">图片映射规则:</label>
+                <button id="addImageMappingIOS" class="add-button">+ 添加规则</button>
+              </div>
+              
+              <div id="imageMappingListIOS" class="mapping-list">
+                <!-- 动态添加的映射规则 -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="random-code-section">
+          <label class="checkbox-label">
+            <input type="checkbox" id="addRandomCodeIOS">
+            <span>添加随机代码（增加二进制差异）</span>
+          </label>
+
+          <div id="randomCodeOptionsIOS" style="display: none; margin-top: 15px;">
+            <div class="input-group">
+              <label for="randomPrefixIOS">随机代码前缀:</label>
+              <input type="text" id="randomPrefixIOS" placeholder="例如: obf" class="prefix-input" value="obf">
+              <span class="hint">随机方法和变量的前缀</span>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 10px;">
+              <div class="input-group" style="flex: 1;">
+                <label for="randomMethodCountIOS">随机方法数:</label>
+                <input type="number" id="randomMethodCountIOS" min="0" max="20" value="3" class="prefix-input">
+                <span class="hint">每个文件添加的方法数量</span>
+              </div>
+
+              <div class="input-group" style="flex: 1;">
+                <label for="randomVarCountIOS">随机变量数:</label>
+                <input type="number" id="randomVarCountIOS" min="0" max="20" value="5" class="prefix-input">
+                <span class="hint">每个文件添加的变量数量</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Android 配置 -->
+      <section class="section" id="androidConfig" style="display: none;">
+        <h2>✏️ Android 配置</h2>
+        
+        <div class="android-config">
+          <div class="input-group">
+            <label for="oldPackage">旧包名:</label>
+            <input type="text" id="oldPackage" placeholder="例如: com.yndcyst.shop" class="package-input">
+            <span class="hint">要被替换的包名（必填）</span>
+          </div>
+
+          <div class="arrow-vertical">↓</div>
+
+          <div class="input-group">
+            <label for="newPackage">新包名:</label>
+            <input type="text" id="newPackage" placeholder="例如: com.sss.shop" class="package-input">
+            <span class="hint">新的包名（必填）</span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="prefix-optional">
+            <label class="checkbox-label">
+              <input type="checkbox" id="hasAndroidPrefix">
+              <span>同时修改类前缀（可选）</span>
+            </label>
+          </div>
+
+          <div id="androidPrefixInputs" class="prefix-inputs" style="display: none; margin-top: 15px;">
+            <div class="input-group">
+              <label for="oldAndroidPrefix">旧前缀:</label>
+              <input type="text" id="oldAndroidPrefix" placeholder="例如: ABC" class="prefix-input">
+              <span class="hint">要被替换的类前缀</span>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="input-group">
+              <label for="newAndroidPrefix">新前缀:</label>
+              <input type="text" id="newAndroidPrefix" placeholder="例如: XYZ" class="prefix-input">
+              <span class="hint">新的类前缀</span>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="variable-modify-section">
+            <label class="checkbox-label">
+              <input type="checkbox" id="modifyVariablesAndroid">
+              <span>修改类变量值（可选）</span>
+            </label>
+
+            <div id="variableModifyOptionsAndroid" style="display: none; margin-top: 15px;">
+              <div class="config-file-selector" style="margin-bottom: 15px;">
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                  <select id="variableConfigSelectAndroid" class="config-select">
+                    <option value="">-- 选择配置文件或新建 --</option>
+                  </select>
+                  <button id="saveVariableConfigAndroid" class="save-config-button">💾 保存</button>
+                  <button id="deleteVariableConfigAndroid" class="delete-config-button">🗑️ 删除</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button id="exportVariableConfigAndroid" class="export-button">📤 导出</button>
+                  <button id="importVariableConfigAndroid" class="import-button">📥 导入</button>
+                  <button id="templateVariableConfigAndroid" class="template-button">📚 模板库</button>
+                  <button id="shareVariableConfigAndroid" class="share-button">🔗 生成分享</button>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <label style="font-weight: 500;">类和变量修改规则:</label>
+                  <button id="addClassRuleAndroid" class="add-button">+ 添加类</button>
+                </div>
+                
+                <div id="classRuleListAndroid" class="class-rule-list">
+                  <!-- 动态添加的类规则 -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="image-replace-section">
+            <label class="checkbox-label">
+              <input type="checkbox" id="replaceImagesAndroid">
+              <span>替换图片资源（可选）</span>
+            </label>
+
+            <div id="imageReplaceOptionsAndroid" style="display: none; margin-top: 15px;">
+              <div class="config-file-selector" style="margin-bottom: 15px;">
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                  <select id="imageConfigSelectAndroid" class="config-select">
+                    <option value="">-- 选择配置文件或新建 --</option>
+                  </select>
+                  <button id="saveImageConfigAndroid" class="save-config-button">💾 保存</button>
+                  <button id="deleteImageConfigAndroid" class="delete-config-button">🗑️ 删除</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button id="exportImageConfigAndroid" class="export-button">📤 导出</button>
+                  <button id="importImageConfigAndroid" class="import-button">📥 导入</button>
+                  <button id="templateImageConfigAndroid" class="template-button">📚 模板库</button>
+                  <button id="shareImageConfigAndroid" class="share-button">🔗 生成分享</button>
+                </div>
+              </div>
+
+              <div class="input-group">
+                <label>图片资源文件夹:</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <input type="text" id="imageFolderPathAndroid" readonly placeholder="选择图片文件夹" class="prefix-input" style="flex: 1;">
+                  <button id="selectImageFolderAndroid" class="select-button">选择文件夹</button>
+                </div>
+                <span class="hint">包含要替换的新图片的文件夹（支持 drawable/mipmap）</span>
+              </div>
+
+              <div style="margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <label style="font-weight: 500;">图片映射规则:</label>
+                  <button id="addImageMappingAndroid" class="add-button">+ 添加规则</button>
+                </div>
+                
+                <div id="imageMappingListAndroid" class="mapping-list">
+                  <!-- 动态添加的映射规则 -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="random-code-section">
+            <label class="checkbox-label">
+              <input type="checkbox" id="addRandomCode">
+              <span>添加随机代码（增加二进制差异）</span>
+            </label>
+
+            <div id="randomCodeOptions" style="display: none; margin-top: 15px;">
+              <div class="input-group">
+                <label for="randomPrefix">随机代码前缀:</label>
+                <input type="text" id="randomPrefix" placeholder="例如: obf" class="prefix-input" value="obf">
+                <span class="hint">随机方法和变量的前缀</span>
+              </div>
+
+              <div style="display: flex; gap: 15px; margin-top: 10px;">
+                <div class="input-group" style="flex: 1;">
+                  <label for="randomMethodCount">随机方法数:</label>
+                  <input type="number" id="randomMethodCount" min="0" max="20" value="3" class="prefix-input">
+                  <span class="hint">每个文件添加的方法数量</span>
+                </div>
+
+                <div class="input-group" style="flex: 1;">
+                  <label for="randomVarCount">随机变量数:</label>
+                  <input type="number" id="randomVarCount" min="0" max="20" value="5" class="prefix-input">
+                  <span class="hint">每个文件添加的变量数量</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 操作按钮 -->
+      <section class="section actions">
+        <button id="scanBtn" class="btn btn-primary" disabled>
+          <span>🔍</span> 扫描文件
+        </button>
+        <button id="processBtn" class="btn btn-success" disabled>
+          <span>⚡</span> 开始替换
+        </button>
+      </section>
+
+      <!-- 进度条 -->
+      <section id="progress" class="section progress-section" style="display: none;">
+        <h3>处理进度</h3>
+        <div class="progress-bar-container">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div id="progressText" class="progress-text">0%</div>
+        <div id="currentFile" class="current-file"></div>
+      </section>
+
+      <!-- 结果显示 -->
+      <section class="section">
+        <div id="results" class="results">
+          <div class="placeholder">
+            <p>👆 请选择文件夹并配置前缀后开始操作</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="instructions">
+        <h3>📖 使用说明</h3>
+        <ol>
+          <li>选择<strong>平台</strong>（iOS 或 Android）</li>
+          <li>选择包含源文件的<strong>源文件夹</strong></li>
+          <li>选择保存处理后文件的<strong>目标文件夹</strong>（必须不同于源文件夹）</li>
+          <li>根据平台配置参数：
+            <ul>
+              <li><strong>iOS:</strong> 输入旧前缀和新前缀（例如: ABC → XYZ）</li>
+              <li><strong>Android:</strong> 输入旧包名和新包名（例如: com.yndcyst.shop → com.sss.shop）<br>
+                  可选：勾选"同时修改类前缀"并输入前缀</li>
+            </ul>
+          </li>
+          <li>点击<strong>"扫描文件"</strong>查看将要处理的文件</li>
+          <li>确认无误后，点击<strong>"开始替换"</strong></li>
+        </ol>
+        <div class="notes">
+          <p><strong>注意事项:</strong></p>
+          <ul>
+            <li>✅ iOS: 处理 .swift 文件，替换类前缀</li>
+            <li>✅ Android: 处理 .kt/.java 文件，替换包名（package）</li>
+            <li>✅ Android: 可选择同时修改类前缀</li>
+            <li>✅ Android: 自动更新目录结构以匹配新包名</li>
+            <li>✅ 其他文件（图片、资源等）会完整复制</li>
+            <li>✅ 默认排除 Pods，可在 iOS 页面勾选复制</li>
+            <li>✅ 自动排除 build、隐藏文件等</li>
+            <li>⚠️ 建议先备份源文件</li>
+          </ul>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+  <script src="renderer-image.js"></script>
+  <script src="renderer-variable.js"></script>
+  <script src="renderer-config.js"></script>
+  <script src="renderer-config-advanced.js"></script>
+</body>
+</html>
