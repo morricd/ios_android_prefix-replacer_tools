@@ -59,37 +59,38 @@ function validateReplacement(content, oldPrefix, newPrefix, filePath) {
 // 处理 Android Kotlin/Java 文件
 async function processAndroidFile(sourcePath, targetPath, oldPackage, newPackage, oldPrefix, newPrefix) {
   let content = await fs.readFile(sourcePath, 'utf8');
+  const escapedOldPackage = escapeRegExp(oldPackage);
   
   // 1. 替换 package 声明
-  const packagePattern = new RegExp(`package\\s+${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const packagePattern = new RegExp(`package\\s+${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(packagePattern, `package ${newPackage}`);
   
   // 2. 替换普通 import 语句
-  const importPattern = new RegExp(`import\\s+${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const importPattern = new RegExp(`import\\s+${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(importPattern, `import ${newPackage}`);
   
   // 3. 替换 static import
-  const staticImportPattern = new RegExp(`import\\s+static\\s+${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const staticImportPattern = new RegExp(`import\\s+static\\s+${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(staticImportPattern, `import static ${newPackage}`);
   
   // 4. 替换 extends
-  const extendsPattern = new RegExp(`extends\\s+${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const extendsPattern = new RegExp(`extends\\s+${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(extendsPattern, `extends ${newPackage}`);
   
   // 5. 替换 implements
-  const implementsPattern = new RegExp(`implements\\s+${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const implementsPattern = new RegExp(`implements\\s+${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(implementsPattern, `implements ${newPackage}`);
   
   // 6. 替换注解
-  const annotationPattern = new RegExp(`@${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const annotationPattern = new RegExp(`@${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(annotationPattern, `@${newPackage}`);
   
   // 7. 替换泛型
-  const genericPattern = new RegExp(`<${oldPackage.replace(/\./g, '\\.')}`, 'g');
+  const genericPattern = new RegExp(`<${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(genericPattern, `<${newPackage}`);
   
   // 8. 替换完整类名
-  const fullyQualifiedPattern = new RegExp(`\\b${oldPackage.replace(/\./g, '\\.')}\\.(\\w+)`, 'g');
+  const fullyQualifiedPattern = new RegExp(`\\b${escapedOldPackage}\\.(\\w+)`, 'g');
   content = content.replace(fullyQualifiedPattern, `${newPackage}.$1`);
   
   // 9. 如果有类前缀，替换类名

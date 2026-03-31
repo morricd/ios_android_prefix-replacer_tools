@@ -565,16 +565,21 @@ async function processAndroidFile(sourcePath, targetPath, oldPackage, newPackage
 // 重组 Android 包目录结构
 function reorganizeAndroidPackage(filePath, sourcePath, targetPath, oldPackage, newPackage) {
   const relativePath = path.relative(sourcePath, filePath);
-  
-  // 将包名转换为路径格式
-  // 例如: com.yndcyst.shop -> com/yndcyst/shop
-  const oldPackagePath = oldPackage.replace(/\./g, path.sep);
-  const newPackagePath = newPackage.replace(/\./g, path.sep);
-  
-  // 如果文件路径包含旧的包路径，替换它
+
+  // 将包名作为路径片段精确替换，避免误匹配:
+  // com/yndcyst/shop 不应匹配 com/yndcyst/shopping
+  const oldSegments = oldPackage.split('.');
+  const newSegments = newPackage.split('.');
+  const pathSegments = relativePath.split(path.sep);
+
   let newRelativePath = relativePath;
-  if (relativePath.includes(oldPackagePath)) {
-    newRelativePath = relativePath.replace(oldPackagePath, newPackagePath);
+  for (let i = 0; i <= pathSegments.length - oldSegments.length; i++) {
+    const isMatch = oldSegments.every((segment, index) => pathSegments[i + index] === segment);
+    if (isMatch) {
+      pathSegments.splice(i, oldSegments.length, ...newSegments);
+      newRelativePath = pathSegments.join(path.sep);
+      break;
+    }
   }
   
   return path.join(targetPath, newRelativePath);
@@ -590,28 +595,28 @@ async function processAndroidXmlFile(sourcePath, targetPath, oldPackage, newPack
   
   // 1. 替换自定义 View 的开始标签（包含包名）
   // 例如: <com.yndcyst.shop.widget.CustomView ... />
-  const customViewOpenPattern = new RegExp(`<${escapedOldPackage}`, 'g');
+  const customViewOpenPattern = new RegExp(`<${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(customViewOpenPattern, `<${escapedNewPackage}`);
   
   // 2. 替换自定义 View 的闭合标签 ⭐ 新增
   // 例如: </com.yndcyst.shop.widget.CustomView>
-  const customViewClosePattern = new RegExp(`</${escapedOldPackage}`, 'g');
+  const customViewClosePattern = new RegExp(`</${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(customViewClosePattern, `</${escapedNewPackage}`);
   
   // 3. 替换 variable 标签中的 type 属性包名（支持引号内有空格的情况）
   // 例如: type="com.yndcyst.shop.feature.main.home.HomeFragment.Handler"
   // 使用更宽松的匹配：type="任意空格+包名
-  const typePattern = new RegExp(`type=\\s*"\\s*${escapedOldPackage}`, 'g');
+  const typePattern = new RegExp(`type=\\s*"\\s*${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(typePattern, `type="${escapedNewPackage}`);
   
   // 4. 替换 class 属性中的包名（支持引号内有空格的情况）
   // 例如: class="com.yndcyst.shop.CustomAdapter"
-  const classPattern = new RegExp(`class=\\s*"\\s*${escapedOldPackage}`, 'g');
+  const classPattern = new RegExp(`class=\\s*"\\s*${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(classPattern, `class="${escapedNewPackage}`);
   
   // 5. 替换 name 属性中的包名（用于 fragment、activity 等）
   // 例如: android:name="com.yndcyst.shop.MainActivity"
-  const namePattern = new RegExp(`android:name=\\s*"\\s*${escapedOldPackage}`, 'g');
+  const namePattern = new RegExp(`android:name=\\s*"\\s*${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(namePattern, `android:name="${escapedNewPackage}`);
   
   // 6. 替换 package 属性（AndroidManifest.xml）
@@ -647,7 +652,7 @@ async function processProGuardFile(sourcePath, targetPath, oldPackage, newPackag
   // 替换所有包名引用
   // -keep class com.yndcyst.shop.** { *; }
   const escapedOldPackage = oldPackage.replace(/\./g, '\\.');
-  const packagePattern = new RegExp(escapedOldPackage, 'g');
+  const packagePattern = new RegExp(`${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
   content = content.replace(packagePattern, newPackage);
   
   await fs.writeFile(targetPath, content, 'utf8');
@@ -846,6 +851,8 @@ function getRandomDefaultValueSwift(type) {
 // 更新 Android 配置文件
 async function updateAndroidConfig(projectPath, oldPackage, newPackage) {
   try {
+    const escapedOldPackage = oldPackage.replace(/\./g, '\\.');
+    
     // 更新 build.gradle 文件
     const gradleFiles = [
       'build.gradle',
@@ -861,11 +868,11 @@ async function updateAndroidConfig(projectPath, oldPackage, newPackage) {
         let content = await fs.readFile(gradlePath, 'utf8');
         
         // 替换 applicationId
-        const appIdPattern = new RegExp(`applicationId\\s+["']${oldPackage.replace(/\./g, '\\.')}["']`, 'g');
+        const appIdPattern = new RegExp(`applicationId\\s+["']${escapedOldPackage}["']`, 'g');
         content = content.replace(appIdPattern, `applicationId "${newPackage}"`);
         
         // 替换 namespace
-        const namespacePattern = new RegExp(`namespace\\s+["']${oldPackage.replace(/\./g, '\\.')}["']`, 'g');
+        const namespacePattern = new RegExp(`namespace\\s+["']${escapedOldPackage}["']`, 'g');
         content = content.replace(namespacePattern, `namespace "${newPackage}"`);
         
         await fs.writeFile(gradlePath, content, 'utf8');
@@ -887,11 +894,11 @@ async function updateAndroidConfig(projectPath, oldPackage, newPackage) {
         let content = await fs.readFile(manifestPath, 'utf8');
         
         // 替换 package 属性
-        const packagePattern = new RegExp(`package\\s*=\\s*["']${oldPackage.replace(/\./g, '\\.')}["']`, 'g');
+        const packagePattern = new RegExp(`package\\s*=\\s*["']${escapedOldPackage}["']`, 'g');
         content = content.replace(packagePattern, `package="${newPackage}"`);
         
         // 替换组件名称中的包名
-        const componentPattern = new RegExp(`android:name\\s*=\\s*["']${oldPackage.replace(/\./g, '\\.')}`, 'g');
+        const componentPattern = new RegExp(`android:name\\s*=\\s*["']${escapedOldPackage}(?![a-zA-Z0-9_])`, 'g');
         content = content.replace(componentPattern, `android:name="${newPackage}`);
         
         await fs.writeFile(manifestPath, content, 'utf8');
