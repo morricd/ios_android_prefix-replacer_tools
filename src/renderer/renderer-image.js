@@ -216,6 +216,24 @@
         }
       });
     }
+
+    const normalizeUnreplacedImagesIOS = document.getElementById('normalizeUnreplacedImagesIOS');
+    if (normalizeUnreplacedImagesIOS) {
+      normalizeUnreplacedImagesIOS.addEventListener('change', () => {
+        if (window.updateButtonStates) {
+          window.updateButtonStates();
+        }
+      });
+    }
+    
+    const normalizeUnreplacedImagesAndroid = document.getElementById('normalizeUnreplacedImagesAndroid');
+    if (normalizeUnreplacedImagesAndroid) {
+      normalizeUnreplacedImagesAndroid.addEventListener('change', () => {
+        if (window.updateButtonStates) {
+          window.updateButtonStates();
+        }
+      });
+    }
     
     // iOS 添加映射按钮
     const addImageMappingIOS = document.getElementById('addImageMappingIOS');

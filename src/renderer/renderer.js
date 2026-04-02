@@ -44,6 +44,8 @@ const imageFolderPathIOSInput = document.getElementById('imageFolderPathIOS');
 const imageFolderPathAndroidInput = document.getElementById('imageFolderPathAndroid');
 const renameImageWithNewNameIOSCheckbox = document.getElementById('renameImageWithNewNameIOS');
 const renameImageWithNewNameAndroidCheckbox = document.getElementById('renameImageWithNewNameAndroid');
+const normalizeUnreplacedImagesIOSCheckbox = document.getElementById('normalizeUnreplacedImagesIOS');
+const normalizeUnreplacedImagesAndroidCheckbox = document.getElementById('normalizeUnreplacedImagesAndroid');
 const imageReplaceOptionsIOS = document.getElementById('imageReplaceOptionsIOS');
 const imageReplaceOptionsAndroid = document.getElementById('imageReplaceOptionsAndroid');
 const codeOnlyOptionElements = Array.from(document.querySelectorAll('.code-only-option'));
@@ -180,7 +182,14 @@ selectTargetBtn.addEventListener('click', async () => {
 
 // 扫描文件
 scanBtn.addEventListener('click', async () => {
-  if (!sourcePath) {
+  const onlyReplaceProjectImages = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
+  
+  if (onlyReplaceProjectImages) {
+    if (!targetPath) {
+      showError('请先选择目标文件夹');
+      return;
+    }
+  } else if (!sourcePath) {
     showError('请先选择源文件夹');
     return;
   }
@@ -189,13 +198,41 @@ scanBtn.addEventListener('click', async () => {
   scanBtn.textContent = '扫描中...';
   resultsDiv.innerHTML = '<div class="info">正在扫描文件...</div>';
   
-  const result = await ipcRenderer.invoke('scan-files', sourcePath, currentPlatform, {
-    includePods: currentPlatform === 'ios' ? copyPodsIOSCheckbox.checked : false
-  });
+  let result;
+  if (onlyReplaceProjectImages) {
+    const imageFolderPath = currentPlatform === 'ios'
+      ? (imageFolderPathIOSInput ? imageFolderPathIOSInput.value.trim() : '')
+      : (imageFolderPathAndroidInput ? imageFolderPathAndroidInput.value.trim() : '');
+    if (!imageFolderPath) {
+      showError('请选择图片资源文件夹');
+      scanBtn.disabled = false;
+      scanBtn.textContent = '扫描文件';
+      updateButtonStates();
+      return;
+    }
+    const imageMappingsRaw = window.getImageMappings ? window.getImageMappings(currentPlatform) : [];
+    const imageMappings = (imageMappingsRaw || []).filter(m => m.oldName && m.newName);
+    const imageAutoMatch = imageMappings.length === 0;
+    
+    result = await ipcRenderer.invoke('scan-image-replacements', {
+      projectPath: targetPath,
+      imageFolderPath,
+      platform: currentPlatform,
+      imageMappings,
+      imageAutoMatch
+    });
+  } else {
+    result = await ipcRenderer.invoke('scan-files', sourcePath, currentPlatform, {
+      includePods: currentPlatform === 'ios' ? copyPodsIOSCheckbox.checked : false
+    });
+  }
   
   if (result.success) {
-    scanResults = result;
-    displayScanResults(result);
+    scanResults = {
+      mode: onlyReplaceProjectImages ? 'image-only' : 'code',
+      data: result
+    };
+    displayScanResults(scanResults);
   } else {
     showError(`扫描失败: ${result.error}`);
   }
@@ -228,6 +265,9 @@ processBtn.addEventListener('click', async () => {
     const imageRenameToNewName = currentPlatform === 'ios'
       ? !!(renameImageWithNewNameIOSCheckbox && renameImageWithNewNameIOSCheckbox.checked)
       : !!(renameImageWithNewNameAndroidCheckbox && renameImageWithNewNameAndroidCheckbox.checked);
+    const normalizeUnreplacedImages = currentPlatform === 'ios'
+      ? !!(normalizeUnreplacedImagesIOSCheckbox && normalizeUnreplacedImagesIOSCheckbox.checked)
+      : !!(normalizeUnreplacedImagesAndroidCheckbox && normalizeUnreplacedImagesAndroidCheckbox.checked);
     
     if (!imageFolderPath) {
       showError('请选择图片资源文件夹');
@@ -239,6 +279,7 @@ processBtn.addEventListener('click', async () => {
     options.imageMappings = imageMappings;
     options.imageAutoMatch = imageAutoMatch;
     options.imageRenameToNewName = imageRenameToNewName;
+    options.normalizeUnreplacedImages = normalizeUnreplacedImages;
   } else {
     options.replaceImages = false;
   }
@@ -380,7 +421,7 @@ processBtn.addEventListener('click', async () => {
     const mappingSummary = options.imageAutoMatch
       ? '自动同名匹配（未配置规则）'
       : `手动规则 ${options.imageMappings.length} 条`;
-    confirmMsg += `\n图片替换: 开启\n匹配模式: ${mappingSummary}\n替换后新文件名: ${options.imageRenameToNewName ? '是' : '否（保留旧名）'}`;
+    confirmMsg += `\n图片替换: 开启\n匹配模式: ${mappingSummary}\n替换后新文件名: ${options.imageRenameToNewName ? '是' : '否（保留旧名）'}\n未替换图片重编码: ${options.normalizeUnreplacedImages ? '是' : '否'}`;
   }
   
   const confirmed = confirm(confirmMsg);
@@ -422,8 +463,59 @@ ipcRenderer.on('process-progress', (event, data) => {
 
 // 显示扫描结果
 function displayScanResults(result) {
+  if (result.mode === 'image-only') {
+    const data = result.data;
+    const replacePreview = data.matches.slice(0, 20);
+    const missingPreview = data.missing.slice(0, 10);
+    
+    const html = `
+      <div class="scan-results">
+        <h3>📊 图片扫描结果</h3>
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-label">映射总数:</span>
+            <span class="stat-value">${data.totalMappings}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">可替换规则:</span>
+            <span class="stat-value swift">${data.replaceableCount}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">将替换文件总数:</span>
+            <span class="stat-value">${data.targetFileCount}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">不可替换规则:</span>
+            <span class="stat-value">${data.missingCount}</span>
+          </div>
+        </div>
+        
+        <div class="file-preview">
+          <h4>可替换列表 (前 20 条):</h4>
+          <ul class="file-list">
+            ${replacePreview.map(item => `<li>🖼️ ${item.oldName} → ${item.newName}（命中 ${item.count} 处）</li>`).join('')}
+            ${data.matches.length > 20 ? `<li class="more">... 还有 ${data.matches.length - 20} 条可替换规则</li>` : ''}
+          </ul>
+        </div>
+        
+        ${data.missingCount ? `
+        <div class="file-preview">
+          <h4>未命中/缺失 (前 10 条):</h4>
+          <ul class="file-list">
+            ${missingPreview.map(item => `<li>⚠️ ${item.oldName} → ${item.newName}（${item.reason}）</li>`).join('')}
+            ${data.missing.length > 10 ? `<li class="more">... 还有 ${data.missing.length - 10} 条</li>` : ''}
+          </ul>
+        </div>
+        ` : ''}
+      </div>
+    `;
+    
+    resultsDiv.innerHTML = html;
+    return;
+  }
+  
   const fileTypeLabel = currentPlatform === 'ios' ? 'Swift' : 'Kotlin/Java/XML';
-  const fileExt = currentPlatform === 'ios' ? '.swift' : '.kt/.java/.xml';
+  const data = result.data;
   
   const html = `
     <div class="scan-results">
@@ -431,23 +523,23 @@ function displayScanResults(result) {
       <div class="stats">
         <div class="stat-item">
           <span class="stat-label">总文件数:</span>
-          <span class="stat-value">${result.total}</span>
+          <span class="stat-value">${data.total}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">${fileTypeLabel} 文件:</span>
-          <span class="stat-value swift">${result.codeFiles.length}</span>
+          <span class="stat-value swift">${data.codeFiles.length}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">其他文件:</span>
-          <span class="stat-value">${result.otherFiles.length}</span>
+          <span class="stat-value">${data.otherFiles.length}</span>
         </div>
       </div>
       
       <div class="file-preview">
         <h4>${fileTypeLabel} 文件预览 (前 10 个):</h4>
         <ul class="file-list">
-          ${result.codeFiles.slice(0, 10).map(f => `<li>📄 ${f}</li>`).join('')}
-          ${result.codeFiles.length > 10 ? `<li class="more">... 还有 ${result.codeFiles.length - 10} 个文件</li>` : ''}
+          ${data.codeFiles.slice(0, 10).map(f => `<li>📄 ${f}</li>`).join('')}
+          ${data.codeFiles.length > 10 ? `<li class="more">... 还有 ${data.codeFiles.length - 10} 个文件</li>` : ''}
         </ul>
       </div>
     </div>
@@ -478,6 +570,12 @@ function displayProcessResults(results) {
         <div class="stat-item">
           <span class="stat-label">图片替换成功:</span>
           <span class="stat-value">${results.imageReplaced || 0}/${results.imageTotal}</span>
+        </div>
+        ` : ''}
+        ${results.normalizedImages ? `
+        <div class="stat-item">
+          <span class="stat-label">未替换重编码:</span>
+          <span class="stat-value">${results.normalizedImages}</span>
         </div>
         ` : ''}
         ${results.movedDirs ? `
@@ -535,14 +633,28 @@ function showError(message) {
 // 更新按钮状态
 function updateButtonStates() {
   const onlyReplaceProjectImages = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
-  const canScan = sourcePath !== '';
+  const imageFolderPath = currentPlatform === 'ios'
+    ? (imageFolderPathIOSInput ? imageFolderPathIOSInput.value.trim() : '')
+    : (imageFolderPathAndroidInput ? imageFolderPathAndroidInput.value.trim() : '');
+  const canScan = onlyReplaceProjectImages
+    ? (targetPath !== '' && imageFolderPath !== '')
+    : (sourcePath !== '');
   const replaceImagesEnabled = currentPlatform === 'ios'
     ? !!(replaceImagesIOSCheckbox && replaceImagesIOSCheckbox.checked)
     : !!(replaceImagesAndroidCheckbox && replaceImagesAndroidCheckbox.checked);
   const imageOnlyProcess = targetPath !== '' && replaceImagesEnabled && (onlyReplaceProjectImages || sourcePath === '');
-  const canProcess = (sourcePath !== '' && targetPath !== '' && scanResults !== null && !onlyReplaceProjectImages) || imageOnlyProcess;
+  const canProcess = (
+    sourcePath !== '' &&
+    targetPath !== '' &&
+    scanResults !== null &&
+    !onlyReplaceProjectImages
+  ) || (
+    imageOnlyProcess &&
+    scanResults !== null &&
+    scanResults.mode === 'image-only'
+  );
   
-  scanBtn.disabled = onlyReplaceProjectImages || !canScan;
+  scanBtn.disabled = !canScan;
   processBtn.disabled = !canProcess;
 }
 
@@ -559,6 +671,8 @@ if (replaceImagesIOSCheckbox) replaceImagesIOSCheckbox.addEventListener('change'
 if (replaceImagesAndroidCheckbox) replaceImagesAndroidCheckbox.addEventListener('change', updateButtonStates);
 if (imageFolderPathIOSInput) imageFolderPathIOSInput.addEventListener('input', updateButtonStates);
 if (imageFolderPathAndroidInput) imageFolderPathAndroidInput.addEventListener('input', updateButtonStates);
+if (normalizeUnreplacedImagesIOSCheckbox) normalizeUnreplacedImagesIOSCheckbox.addEventListener('change', updateButtonStates);
+if (normalizeUnreplacedImagesAndroidCheckbox) normalizeUnreplacedImagesAndroidCheckbox.addEventListener('change', updateButtonStates);
 
 // 初始化
 applyImageOnlyModeUI();

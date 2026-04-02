@@ -18,7 +18,8 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
     total: mappingsToRun.length,
     success: 0,
     failed: 0,
-    errors: []
+    errors: [],
+    replacedFiles: []
   };
   
   for (const mapping of mappingsToRun) {
@@ -28,9 +29,11 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
     
     try {
       if (platform === 'ios') {
-        await replaceIOSImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
+        const replacedPaths = await replaceIOSImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
+        results.replacedFiles.push(...replacedPaths);
       } else {
-        await replaceAndroidImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
+        const replacedPaths = await replaceAndroidImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
+        results.replacedFiles.push(...replacedPaths);
       }
       results.success++;
     } catch (error) {
@@ -44,6 +47,69 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
   }
   
   return results;
+}
+
+async function previewImageReplacements(projectPath, imageFolderPath, imageMappings, platform, options = {}) {
+  const { autoMatchByFileName = false } = options;
+  let mappingsToRun = Array.isArray(imageMappings) ? [...imageMappings] : [];
+  const sourceIndex = await buildImageSourceIndex(imageFolderPath);
+  
+  if (mappingsToRun.length === 0 && autoMatchByFileName) {
+    mappingsToRun = Array.from(sourceIndex.names).map((fileName) => ({
+      oldName: fileName,
+      newName: fileName
+    }));
+  }
+  
+  const matches = [];
+  const missing = [];
+  
+  for (const mapping of mappingsToRun) {
+    if (!mapping.oldName || !mapping.newName) {
+      continue;
+    }
+    
+    const newImagePath = await resolveNewImagePath(imageFolderPath, mapping.newName, sourceIndex);
+    const newImageExists = await fs.pathExists(newImagePath);
+    
+    if (!newImageExists) {
+      missing.push({
+        oldName: mapping.oldName,
+        newName: mapping.newName,
+        reason: `新图片不存在: ${mapping.newName}`
+      });
+      continue;
+    }
+    
+    const targets = platform === 'ios'
+      ? await findIOSReplacementTargets(projectPath, mapping.oldName)
+      : await findAndroidReplacementTargets(projectPath, mapping.oldName);
+    
+    if (targets.length === 0) {
+      missing.push({
+        oldName: mapping.oldName,
+        newName: mapping.newName,
+        reason: `项目中未找到旧图片: ${mapping.oldName}`
+      });
+      continue;
+    }
+    
+    matches.push({
+      oldName: mapping.oldName,
+      newName: mapping.newName,
+      count: targets.length,
+      targets
+    });
+  }
+  
+  return {
+    totalMappings: mappingsToRun.length,
+    replaceableCount: matches.length,
+    targetFileCount: matches.reduce((sum, item) => sum + item.count, 0),
+    missingCount: missing.length,
+    matches,
+    missing
+  };
 }
 
 async function buildImageSourceIndex(imageFolderPath) {
@@ -164,6 +230,35 @@ async function replaceIOSImage(projectPath, imageFolderPath, mapping, options = 
   }
   
   console.log(`成功替换 iOS 图片: ${oldName} → ${newName}`);
+  const targets = await findIOSReplacementTargets(projectPath, renameToNewName ? newName : oldName);
+  return targets;
+}
+
+async function findIOSReplacementTargets(projectPath, oldName) {
+  const assetsDir = await findAssetsDirectory(projectPath);
+  if (!assetsDir) {
+    return [];
+  }
+  
+  const oldImageset = await findImageset(assetsDir, oldName);
+  if (!oldImageset) {
+    return [];
+  }
+  
+  const contentsPath = path.join(oldImageset, 'Contents.json');
+  if (!await fs.pathExists(contentsPath)) {
+    return [oldImageset];
+  }
+  
+  try {
+    const contents = JSON.parse(await fs.readFile(contentsPath, 'utf8'));
+    const imageFiles = (contents.images || [])
+      .filter((image) => !!image.filename)
+      .map((image) => path.join(oldImageset, image.filename));
+    return imageFiles.length > 0 ? imageFiles : [oldImageset];
+  } catch (error) {
+    return [oldImageset];
+  }
 }
 
 // 替换 Android 图片
@@ -178,6 +273,7 @@ async function replaceAndroidImage(projectPath, imageFolderPath, mapping, option
   }
   
   let replaced = false;
+  const replacedPaths = [];
   
   // 遍历所有 drawable 和 mipmap 目录
   for (const resDir of resDirectories) {
@@ -202,9 +298,11 @@ async function replaceAndroidImage(projectPath, imageFolderPath, mapping, option
           if (newTargetPath !== oldImagePath && await fs.pathExists(oldImagePath)) {
             await fs.remove(oldImagePath);
           }
+          replacedPaths.push(newTargetPath);
         } else {
           // 复制新图片并覆盖旧图片（保持旧文件名）
           await fs.copy(newImagePath, oldImagePath);
+          replacedPaths.push(oldImagePath);
         }
         replaced = true;
         
@@ -218,6 +316,181 @@ async function replaceAndroidImage(projectPath, imageFolderPath, mapping, option
   }
   
   console.log(`成功替换 Android 图片: ${oldName} → ${newName}`);
+  return replacedPaths;
+}
+
+async function normalizeUnreplacedImages(projectPath, platform, replacedFiles = []) {
+  const replacedSet = new Set((replacedFiles || []).map((filePath) => path.resolve(filePath)));
+  const candidates = platform === 'ios'
+    ? await listIOSImageFiles(projectPath)
+    : await listAndroidImageFiles(projectPath);
+  
+  let normalizedCount = 0;
+  for (const filePath of candidates) {
+    const resolvedPath = path.resolve(filePath);
+    if (replacedSet.has(resolvedPath)) {
+      continue;
+    }
+    try {
+      const changed = await rewriteImageBinary(filePath);
+      if (changed) {
+        normalizedCount++;
+      }
+    } catch (error) {
+      console.warn(`重编码失败，已跳过: ${filePath}`, error.message);
+    }
+  }
+  
+  return { normalizedCount };
+}
+
+async function listIOSImageFiles(projectPath) {
+  const assetsDir = await findAssetsDirectory(projectPath);
+  if (!assetsDir) {
+    return [];
+  }
+  
+  const results = [];
+  const supported = /\.(png|jpe?g)$/i;
+  
+  async function walk(currentDir) {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (supported.test(entry.name)) {
+        results.push(fullPath);
+      }
+    }
+  }
+  
+  await walk(assetsDir);
+  return results;
+}
+
+async function listAndroidImageFiles(projectPath) {
+  const resDirs = await findAndroidResDirectories(projectPath);
+  const results = [];
+  const supported = /\.(png|jpe?g)$/i;
+  
+  for (const resDir of resDirs) {
+    const drawableDirs = await findDrawableDirectories(resDir);
+    for (const drawableDir of drawableDirs) {
+      const entries = await fs.readdir(drawableDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && supported.test(entry.name)) {
+          results.push(path.join(drawableDir, entry.name));
+        }
+      }
+    }
+  }
+  
+  return results;
+}
+
+async function rewriteImageBinary(filePath) {
+  const buffer = await fs.readFile(filePath);
+  const lower = filePath.toLowerCase();
+  
+  if (lower.endsWith('.png')) {
+    const updated = rewritePngWithTextChunk(buffer, `normalized=${Date.now()}`);
+    if (updated) {
+      await fs.writeFile(filePath, updated);
+      return true;
+    }
+    return false;
+  }
+  
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    const updated = rewriteJpegWithComment(buffer, `normalized=${Date.now()}`);
+    if (updated) {
+      await fs.writeFile(filePath, updated);
+      return true;
+    }
+    return false;
+  }
+  
+  return false;
+}
+
+function rewritePngWithTextChunk(buffer, text) {
+  const signature = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  if (buffer.length < 8 || !buffer.subarray(0, 8).equals(signature)) {
+    return null;
+  }
+  
+  let offset = 8;
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString('ascii');
+    const chunkEnd = offset + 12 + length;
+    if (chunkEnd > buffer.length) {
+      return null;
+    }
+    
+    if (type === 'IEND') {
+      const keyword = Buffer.from('Comment', 'latin1');
+      const value = Buffer.from(text, 'latin1');
+      const data = Buffer.concat([keyword, Buffer.from([0x00]), value]);
+      const lenBuf = Buffer.alloc(4);
+      lenBuf.writeUInt32BE(data.length, 0);
+      const typeBuf = Buffer.from('tEXt', 'ascii');
+      const crcBuf = Buffer.alloc(4);
+      crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+      const chunk = Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
+      return Buffer.concat([buffer.subarray(0, offset), chunk, buffer.subarray(offset)]);
+    }
+    
+    offset = chunkEnd;
+  }
+  
+  return null;
+}
+
+function rewriteJpegWithComment(buffer, text) {
+  if (buffer.length < 4 || buffer[0] !== 0xFF || buffer[1] !== 0xD8) {
+    return null;
+  }
+  
+  const comment = Buffer.from(text, 'utf8');
+  const length = comment.length + 2;
+  if (length > 0xFFFF) {
+    return null;
+  }
+  
+  const marker = Buffer.from([0xFF, 0xFE, (length >> 8) & 0xFF, length & 0xFF]);
+  const segment = Buffer.concat([marker, comment]);
+  return Buffer.concat([buffer.subarray(0, 2), segment, buffer.subarray(2)]);
+}
+
+function crc32(buffer) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < buffer.length; i++) {
+    crc ^= buffer[i];
+    for (let j = 0; j < 8; j++) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xEDB88320 & mask);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+async function findAndroidReplacementTargets(projectPath, oldName) {
+  const targets = [];
+  const resDirectories = await findAndroidResDirectories(projectPath);
+  
+  for (const resDir of resDirectories) {
+    const drawableDirs = await findDrawableDirectories(resDir);
+    for (const drawableDir of drawableDirs) {
+      const oldImagePath = path.join(drawableDir, oldName);
+      if (await fs.pathExists(oldImagePath)) {
+        targets.push(oldImagePath);
+      }
+    }
+  }
+  
+  return targets;
 }
 
 // 查找 iOS Assets 目录
@@ -360,5 +633,7 @@ async function findDirectories(basePath, pattern) {
 }
 
 module.exports = {
-  replaceImages
+  replaceImages,
+  previewImageReplacements,
+  normalizeUnreplacedImages
 };

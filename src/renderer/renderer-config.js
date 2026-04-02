@@ -108,10 +108,14 @@
       const renameCheckbox = document.getElementById(
         `renameImageWithNewName${platform === 'ios' ? 'IOS' : 'Android'}`
       );
+      const normalizeCheckbox = document.getElementById(
+        `normalizeUnreplacedImages${platform === 'ios' ? 'IOS' : 'Android'}`
+      );
       data = {
         imageFolderPath: folderPath,
         mappings,
-        renameToNewName: !!(renameCheckbox && renameCheckbox.checked)
+        renameToNewName: !!(renameCheckbox && renameCheckbox.checked),
+        normalizeUnreplacedImages: !!(normalizeCheckbox && normalizeCheckbox.checked)
       };
       
       if (mappings.length === 0) {
@@ -187,6 +191,12 @@
         );
         if (renameCheckbox) {
           renameCheckbox.checked = !!config.data.renameToNewName;
+        }
+        const normalizeCheckbox = document.getElementById(
+          `normalizeUnreplacedImages${platform === 'ios' ? 'IOS' : 'Android'}`
+        );
+        if (normalizeCheckbox) {
+          normalizeCheckbox.checked = !!config.data.normalizeUnreplacedImages;
         }
         
         if (config.data.mappings && window.loadImageMappingsFromData) {

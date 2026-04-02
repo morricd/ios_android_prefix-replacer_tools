@@ -198,6 +198,14 @@
               <span class="hint">开启后会将旧文件名替换为新文件名，可能需要你同步检查资源引用</span>
             </div>
 
+            <div class="prefix-optional" style="margin-top: 10px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="normalizeUnreplacedImagesIOS">
+                <span>未替换图片执行重编码（可选）</span>
+              </label>
+              <span class="hint">对未命中的 PNG/JPEG 图片做无损二进制重写，尽量保持视觉效果不变</span>
+            </div>
+
               <div style="margin-top: 15px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <label style="font-weight: 500;">图片映射规则（可选）:</label>
@@ -368,6 +376,14 @@
                 <span class="hint">开启后会将旧文件名替换为新文件名，可能需要你同步检查资源引用</span>
               </div>
 
+              <div class="prefix-optional" style="margin-top: 10px;">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="normalizeUnreplacedImagesAndroid">
+                  <span>未替换图片执行重编码（可选）</span>
+                </label>
+                <span class="hint">对未命中的 PNG/JPEG 图片做无损二进制重写，尽量保持视觉效果不变</span>
+              </div>
+
               <div style="margin-top: 15px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                   <label style="font-weight: 500;">图片映射规则（可选）:</label>
@@ -470,10 +486,21 @@
             <li>✅ Android: 可选择同时修改类前缀</li>
             <li>✅ Android: 自动更新目录结构以匹配新包名</li>
             <li>✅ 其他文件（图片、资源等）会完整复制</li>
+            <li>✅ 可使用“只替换项目图片”模式，先扫描后替换</li>
+            <li>✅ 图片映射规则可选；不填写时自动按同名图片匹配替换</li>
+            <li>✅ 可选“替换后使用新图片名”，默认保留旧文件名</li>
+            <li>✅ 可选“未替换图片执行重编码”，用于统一图片产物</li>
             <li>✅ 默认排除 Pods，可在 iOS 页面勾选复制</li>
             <li>✅ 自动排除 build、隐藏文件等</li>
             <li>⚠️ 建议先备份源文件</li>
           </ul>
+        </div>
+        <div class="notes" style="margin-top: 16px; font-size: 0.7em; line-height: 1.45;">
+          <p><strong>版权与侵权说明:</strong></p>
+          <p>Copyright © morric</p>
+          <p>联系邮箱: dxlxiaolong@me.com</p>
+          <p>本工具仅供合法合规场景使用，请勿用于任何侵犯他人知识产权的行为。</p>
+          <p>如您认为本工具或相关内容存在侵权问题，请通过上述邮箱联系我们，我们将在核实后尽快处理或删除相关内容。</p>
         </div>
       </div>
     </footer>

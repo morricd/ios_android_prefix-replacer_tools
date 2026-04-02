@@ -107,6 +107,44 @@ ipcMain.handle('scan-files', async (event, sourcePath, platform = 'ios', extraOp
   }
 });
 
+// 扫描图片替换预览
+ipcMain.handle('scan-image-replacements', async (event, options = {}) => {
+  try {
+    const {
+      projectPath,
+      imageFolderPath,
+      platform = 'ios',
+      imageMappings = [],
+      imageAutoMatch = false
+    } = options;
+    
+    if (!projectPath) {
+      throw new Error('缺少目标项目路径');
+    }
+    if (!imageFolderPath) {
+      throw new Error('缺少图片资源路径');
+    }
+    
+    const preview = await imageReplacer.previewImageReplacements(
+      projectPath,
+      imageFolderPath,
+      imageMappings,
+      platform,
+      { autoMatchByFileName: !!imageAutoMatch }
+    );
+    
+    return {
+      success: true,
+      ...preview
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // 执行替换
 ipcMain.handle('process-files', async (event, options) => {
   const { sourcePath, targetPath, platform = 'ios' } = options;
@@ -124,7 +162,8 @@ ipcMain.handle('process-files', async (event, options) => {
       packageReorganized: false,
       imageOnly: isImageOnly,
       imageTotal: 0,
-      imageReplaced: 0
+      imageReplaced: 0,
+      normalizedImages: 0
     };
 
     let allFiles = [];
@@ -402,6 +441,15 @@ ipcMain.handle('process-files', async (event, options) => {
       );
       results.imageTotal = imageResults.total;
       results.imageReplaced = imageResults.success;
+      
+      if (options.normalizeUnreplacedImages) {
+        const normalizeResults = await imageReplacer.normalizeUnreplacedImages(
+          targetPath,
+          platform,
+          imageResults.replacedFiles || []
+        );
+        results.normalizedImages = normalizeResults.normalizedCount || 0;
+      }
       
       if (imageResults.errors && imageResults.errors.length > 0) {
         imageResults.errors.forEach((item) => {
