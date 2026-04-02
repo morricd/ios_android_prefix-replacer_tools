@@ -10,6 +10,8 @@ const sourcePathInput = document.getElementById('sourcePath');
 const targetPathInput = document.getElementById('targetPath');
 const selectSourceBtn = document.getElementById('selectSource');
 const selectTargetBtn = document.getElementById('selectTarget');
+const sourcePathGroup = document.getElementById('sourcePathGroup');
+const onlyReplaceProjectImagesCheckbox = document.getElementById('onlyReplaceProjectImages');
 
 // iOS 配置
 const iosConfig = document.getElementById('iosConfig');
@@ -36,6 +38,15 @@ const progressDiv = document.getElementById('progress');
 const progressBar = document.getElementById('progressBar');
 const progressText = document.getElementById('progressText');
 const currentFileDiv = document.getElementById('currentFile');
+const replaceImagesIOSCheckbox = document.getElementById('replaceImagesIOS');
+const replaceImagesAndroidCheckbox = document.getElementById('replaceImagesAndroid');
+const imageFolderPathIOSInput = document.getElementById('imageFolderPathIOS');
+const imageFolderPathAndroidInput = document.getElementById('imageFolderPathAndroid');
+const renameImageWithNewNameIOSCheckbox = document.getElementById('renameImageWithNewNameIOS');
+const renameImageWithNewNameAndroidCheckbox = document.getElementById('renameImageWithNewNameAndroid');
+const imageReplaceOptionsIOS = document.getElementById('imageReplaceOptionsIOS');
+const imageReplaceOptionsAndroid = document.getElementById('imageReplaceOptionsAndroid');
+const codeOnlyOptionElements = Array.from(document.querySelectorAll('.code-only-option'));
 
 // 平台切换
 platformRadios.forEach(radio => {
@@ -53,9 +64,60 @@ platformRadios.forEach(radio => {
     // 清空结果
     scanResults = null;
     resultsDiv.innerHTML = '<div class="placeholder"><p>👆 请配置参数后开始操作</p></div>';
+    applyImageOnlyModeUI();
     updateButtonStates();
   });
 });
+
+if (onlyReplaceProjectImagesCheckbox) {
+  onlyReplaceProjectImagesCheckbox.addEventListener('change', () => {
+    applyImageOnlyModeUI();
+    updateButtonStates();
+  });
+}
+
+function setElementVisible(element, visible) {
+  if (!element) return;
+  if (visible) {
+    const originalDisplay = element.dataset.originalDisplay || '';
+    element.style.display = originalDisplay;
+  } else {
+    if (element.dataset.originalDisplay === undefined) {
+      element.dataset.originalDisplay = element.style.display || '';
+    }
+    element.style.display = 'none';
+  }
+}
+
+function applyImageOnlyModeUI() {
+  const imageOnlyMode = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
+  
+  setElementVisible(sourcePathGroup, !imageOnlyMode);
+  codeOnlyOptionElements.forEach((element) => setElementVisible(element, !imageOnlyMode));
+  
+  if (imageOnlyMode) {
+    if (replaceImagesIOSCheckbox) {
+      replaceImagesIOSCheckbox.checked = true;
+      replaceImagesIOSCheckbox.disabled = true;
+    }
+    if (replaceImagesAndroidCheckbox) {
+      replaceImagesAndroidCheckbox.checked = true;
+      replaceImagesAndroidCheckbox.disabled = true;
+    }
+    if (imageReplaceOptionsIOS) imageReplaceOptionsIOS.style.display = 'block';
+    if (imageReplaceOptionsAndroid) imageReplaceOptionsAndroid.style.display = 'block';
+  } else {
+    if (replaceImagesIOSCheckbox) replaceImagesIOSCheckbox.disabled = false;
+    if (replaceImagesAndroidCheckbox) replaceImagesAndroidCheckbox.disabled = false;
+    
+    if (imageReplaceOptionsIOS && replaceImagesIOSCheckbox) {
+      imageReplaceOptionsIOS.style.display = replaceImagesIOSCheckbox.checked ? 'block' : 'none';
+    }
+    if (imageReplaceOptionsAndroid && replaceImagesAndroidCheckbox) {
+      imageReplaceOptionsAndroid.style.display = replaceImagesAndroidCheckbox.checked ? 'block' : 'none';
+    }
+  }
+}
 
 // Android 前缀复选框
 hasAndroidPrefixCheckbox.addEventListener('change', (e) => {
@@ -151,23 +213,56 @@ processBtn.addEventListener('click', async () => {
     platform: currentPlatform
   };
   
+  const replaceImagesEnabled = currentPlatform === 'ios'
+    ? !!(replaceImagesIOSCheckbox && replaceImagesIOSCheckbox.checked)
+    : !!(replaceImagesAndroidCheckbox && replaceImagesAndroidCheckbox.checked);
+  const onlyReplaceProjectImages = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
+  
+  if (replaceImagesEnabled) {
+    const imageFolderPath = currentPlatform === 'ios'
+      ? (imageFolderPathIOSInput ? imageFolderPathIOSInput.value.trim() : '')
+      : (imageFolderPathAndroidInput ? imageFolderPathAndroidInput.value.trim() : '');
+    const imageMappingsRaw = window.getImageMappings ? window.getImageMappings(currentPlatform) : [];
+    const imageMappings = (imageMappingsRaw || []).filter(m => m.oldName && m.newName);
+    const imageAutoMatch = imageMappings.length === 0;
+    const imageRenameToNewName = currentPlatform === 'ios'
+      ? !!(renameImageWithNewNameIOSCheckbox && renameImageWithNewNameIOSCheckbox.checked)
+      : !!(renameImageWithNewNameAndroidCheckbox && renameImageWithNewNameAndroidCheckbox.checked);
+    
+    if (!imageFolderPath) {
+      showError('请选择图片资源文件夹');
+      return;
+    }
+    
+    options.replaceImages = true;
+    options.imageFolderPath = imageFolderPath;
+    options.imageMappings = imageMappings;
+    options.imageAutoMatch = imageAutoMatch;
+    options.imageRenameToNewName = imageRenameToNewName;
+  } else {
+    options.replaceImages = false;
+  }
+  
+  const imageOnlyMode = onlyReplaceProjectImages || (options.replaceImages && !sourcePath);
+  options.imageOnly = imageOnlyMode;
+  
   // 根据平台获取配置
   if (currentPlatform === 'ios') {
     const oldPrefix = oldPrefixInput.value.trim();
     const newPrefix = newPrefixInput.value.trim();
     
-    if (!oldPrefix || !newPrefix) {
+    if (!imageOnlyMode && (!oldPrefix || !newPrefix)) {
       showError('请输入旧前缀和新前缀');
       return;
     }
     
-    options.oldPrefix = oldPrefix;
-    options.newPrefix = newPrefix;
+    options.oldPrefix = oldPrefix || '';
+    options.newPrefix = newPrefix || '';
     options.includePods = copyPodsIOSCheckbox.checked;
     
     // 是否重命名文件和 Group（可选）
     const renameFilesAndGroups = document.getElementById('renameFilesAndGroups');
-    if (renameFilesAndGroups.checked) {
+    if (!imageOnlyMode && renameFilesAndGroups.checked) {
       const oldFileGroupPrefix = document.getElementById('oldFileGroupPrefix').value.trim();
       const newFileGroupPrefix = document.getElementById('newFileGroupPrefix').value.trim();
       
@@ -184,7 +279,7 @@ processBtn.addEventListener('click', async () => {
     }
     
     // 如果勾选了添加随机代码
-    if (addRandomCodeIOSCheckbox.checked) {
+    if (!imageOnlyMode && addRandomCodeIOSCheckbox.checked) {
       const randomPrefix = document.getElementById('randomPrefixIOS').value.trim();
       const randomMethodCount = parseInt(document.getElementById('randomMethodCountIOS').value) || 3;
       const randomVarCount = parseInt(document.getElementById('randomVarCountIOS').value) || 5;
@@ -206,16 +301,16 @@ processBtn.addEventListener('click', async () => {
     const oldPackage = oldPackageInput.value.trim();
     const newPackage = newPackageInput.value.trim();
     
-    if (!oldPackage || !newPackage) {
+    if (!imageOnlyMode && (!oldPackage || !newPackage)) {
       showError('请输入旧包名和新包名');
       return;
     }
     
-    options.oldPackage = oldPackage;
-    options.newPackage = newPackage;
+    options.oldPackage = oldPackage || '';
+    options.newPackage = newPackage || '';
     
     // 如果勾选了类前缀
-    if (hasAndroidPrefixCheckbox.checked) {
+    if (!imageOnlyMode && hasAndroidPrefixCheckbox.checked) {
       const oldAndroidPrefix = oldAndroidPrefixInput.value.trim();
       const newAndroidPrefix = newAndroidPrefixInput.value.trim();
       
@@ -232,7 +327,7 @@ processBtn.addEventListener('click', async () => {
     }
     
     // 如果勾选了添加随机代码
-    if (addRandomCodeCheckbox.checked) {
+    if (!imageOnlyMode && addRandomCodeCheckbox.checked) {
       const randomPrefix = document.getElementById('randomPrefix').value.trim();
       const randomMethodCount = parseInt(document.getElementById('randomMethodCount').value) || 3;
       const randomVarCount = parseInt(document.getElementById('randomVarCount').value) || 5;
@@ -251,28 +346,41 @@ processBtn.addEventListener('click', async () => {
     }
   }
   
-  if (!sourcePath || !targetPath) {
-    showError('请选择源文件夹和目标文件夹');
+  if (!targetPath || (!sourcePath && !imageOnlyMode)) {
+    showError(imageOnlyMode ? '请选择目标文件夹' : '请选择源文件夹和目标文件夹');
     return;
   }
   
-  if (sourcePath === targetPath) {
+  if (!imageOnlyMode && sourcePath === targetPath) {
     showError('源文件夹和目标文件夹不能相同');
     return;
   }
   
   // 确认信息
-  let confirmMsg = `确定要执行替换吗？\n\n源文件夹: ${sourcePath}\n目标文件夹: ${targetPath}\n\n`;
-  if (currentPlatform === 'ios') {
+  let confirmMsg = '确定要执行替换吗？\n\n';
+  if (imageOnlyMode) {
+    confirmMsg += `模式: 仅替换图片\n目标目录: ${targetPath}\n\n`;
+  } else {
+    confirmMsg += `源文件夹: ${sourcePath}\n目标文件夹: ${targetPath}\n\n`;
+  }
+  
+  if (currentPlatform === 'ios' && !imageOnlyMode) {
     confirmMsg += `平台: iOS\n旧前缀: ${options.oldPrefix}\n新前缀: ${options.newPrefix}`;
     if (options.includePods) {
       confirmMsg += '\n复制 Pods: 是';
     }
-  } else {
+  } else if (currentPlatform === 'android' && !imageOnlyMode) {
     confirmMsg += `平台: Android\n旧包名: ${options.oldPackage}\n新包名: ${options.newPackage}`;
     if (options.hasPrefix) {
       confirmMsg += `\n旧前缀: ${options.oldPrefix}\n新前缀: ${options.newPrefix}`;
     }
+  }
+  
+  if (options.replaceImages) {
+    const mappingSummary = options.imageAutoMatch
+      ? '自动同名匹配（未配置规则）'
+      : `手动规则 ${options.imageMappings.length} 条`;
+    confirmMsg += `\n图片替换: 开启\n匹配模式: ${mappingSummary}\n替换后新文件名: ${options.imageRenameToNewName ? '是' : '否（保留旧名）'}`;
   }
   
   const confirmed = confirm(confirmMsg);
@@ -366,6 +474,12 @@ function displayProcessResults(results) {
           <span class="stat-label">复制的其他文件:</span>
           <span class="stat-value">${results.copied}</span>
         </div>
+        ${results.imageTotal ? `
+        <div class="stat-item">
+          <span class="stat-label">图片替换成功:</span>
+          <span class="stat-value">${results.imageReplaced || 0}/${results.imageTotal}</span>
+        </div>
+        ` : ''}
         ${results.movedDirs ? `
         <div class="stat-item">
           <span class="stat-label">重组的目录:</span>
@@ -402,7 +516,7 @@ function displayProcessResults(results) {
       ` : ''}
       
       <div class="success-message">
-        <p>✨ 所有文件已成功处理并保存到目标文件夹</p>
+        ${results.imageOnly ? '<p>✨ 图片资源替换已完成</p>' : '<p>✨ 所有文件已成功处理并保存到目标文件夹</p>'}
         <p class="path">📁 ${targetPath}</p>
         ${currentPlatform === 'android' && results.packageReorganized ? 
           '<p style="color: #28a745; margin-top: 10px;">📦 Android 包目录结构已重新组织</p>' : ''}
@@ -420,12 +534,19 @@ function showError(message) {
 
 // 更新按钮状态
 function updateButtonStates() {
+  const onlyReplaceProjectImages = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
   const canScan = sourcePath !== '';
-  const canProcess = sourcePath !== '' && targetPath !== '' && scanResults !== null;
+  const replaceImagesEnabled = currentPlatform === 'ios'
+    ? !!(replaceImagesIOSCheckbox && replaceImagesIOSCheckbox.checked)
+    : !!(replaceImagesAndroidCheckbox && replaceImagesAndroidCheckbox.checked);
+  const imageOnlyProcess = targetPath !== '' && replaceImagesEnabled && (onlyReplaceProjectImages || sourcePath === '');
+  const canProcess = (sourcePath !== '' && targetPath !== '' && scanResults !== null && !onlyReplaceProjectImages) || imageOnlyProcess;
   
-  scanBtn.disabled = !canScan;
+  scanBtn.disabled = onlyReplaceProjectImages || !canScan;
   processBtn.disabled = !canProcess;
 }
+
+window.updateButtonStates = updateButtonStates;
 
 // 输入框变化时更新按钮状态
 oldPrefixInput.addEventListener('input', updateButtonStates);
@@ -434,6 +555,11 @@ oldPackageInput.addEventListener('input', updateButtonStates);
 newPackageInput.addEventListener('input', updateButtonStates);
 oldAndroidPrefixInput.addEventListener('input', updateButtonStates);
 newAndroidPrefixInput.addEventListener('input', updateButtonStates);
+if (replaceImagesIOSCheckbox) replaceImagesIOSCheckbox.addEventListener('change', updateButtonStates);
+if (replaceImagesAndroidCheckbox) replaceImagesAndroidCheckbox.addEventListener('change', updateButtonStates);
+if (imageFolderPathIOSInput) imageFolderPathIOSInput.addEventListener('input', updateButtonStates);
+if (imageFolderPathAndroidInput) imageFolderPathAndroidInput.addEventListener('input', updateButtonStates);
 
 // 初始化
+applyImageOnlyModeUI();
 updateButtonStates();

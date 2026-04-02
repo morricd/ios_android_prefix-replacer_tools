@@ -98,6 +98,9 @@
       imageMappingsAndroid[index][field] = value;
       saveImageMappings('android');
     }
+    if (window.updateButtonStates) {
+      window.updateButtonStates();
+    }
   }
   
   // 处理删除映射
@@ -114,6 +117,9 @@
       saveImageMappings('android');
       renderImageMappings('android', imageMappingsAndroid);
     }
+    if (window.updateButtonStates) {
+      window.updateButtonStates();
+    }
   }
   
   // 添加新映射
@@ -128,6 +134,9 @@
       imageMappingsAndroid.push(newMapping);
       saveImageMappings('android');
       renderImageMappings('android', imageMappingsAndroid);
+    }
+    if (window.updateButtonStates) {
+      window.updateButtonStates();
     }
   }
   
@@ -167,6 +176,9 @@
         const folderPath = await ipcRenderer.invoke('select-image-folder');
         if (folderPath) {
           imageFolderPathIOS.value = folderPath;
+          if (window.updateButtonStates) {
+            window.updateButtonStates();
+          }
         }
       });
     }
@@ -180,6 +192,27 @@
         const folderPath = await ipcRenderer.invoke('select-image-folder');
         if (folderPath) {
           imageFolderPathAndroid.value = folderPath;
+          if (window.updateButtonStates) {
+            window.updateButtonStates();
+          }
+        }
+      });
+    }
+
+    const renameImageWithNewNameIOS = document.getElementById('renameImageWithNewNameIOS');
+    if (renameImageWithNewNameIOS) {
+      renameImageWithNewNameIOS.addEventListener('change', () => {
+        if (window.updateButtonStates) {
+          window.updateButtonStates();
+        }
+      });
+    }
+    
+    const renameImageWithNewNameAndroid = document.getElementById('renameImageWithNewNameAndroid');
+    if (renameImageWithNewNameAndroid) {
+      renameImageWithNewNameAndroid.addEventListener('change', () => {
+        if (window.updateButtonStates) {
+          window.updateButtonStates();
         }
       });
     }
@@ -196,6 +229,20 @@
       addImageMappingAndroid.addEventListener('click', () => addImageMapping('android'));
     }
   }
+
+  // 从配置数据加载图片映射（供配置管理器调用）
+  window.loadImageMappingsFromData = function(platform, data) {
+    if (platform === 'ios') {
+      imageMappingsIOS = data || [];
+      renderImageMappings('ios', imageMappingsIOS);
+    } else {
+      imageMappingsAndroid = data || [];
+      renderImageMappings('android', imageMappingsAndroid);
+    }
+    if (window.updateButtonStates) {
+      window.updateButtonStates();
+    }
+  };
   
   // DOM 加载完成后初始化
   if (document.readyState === 'loading') {
@@ -208,14 +255,3 @@
     initImageReplaceEvents();
   }
 })();
-
-  // 从配置数据加载图片映射（供配置管理器调用）
-  window.loadImageMappingsFromData = function(platform, data) {
-    if (platform === 'ios') {
-      imageMappingsIOS = data || [];
-      renderImageMappings('ios', imageMappingsIOS);
-    } else {
-      imageMappingsAndroid = data || [];
-      renderImageMappings('android', imageMappingsAndroid);
-    }
-  };

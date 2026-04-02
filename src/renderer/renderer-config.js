@@ -105,9 +105,13 @@
       const mappings = window.getImageMappings ? window.getImageMappings(platform) : [];
       const folderInput = document.getElementById(`imageFolderPath${platform === 'ios' ? 'IOS' : 'Android'}`);
       const folderPath = folderInput ? folderInput.value : '';
+      const renameCheckbox = document.getElementById(
+        `renameImageWithNewName${platform === 'ios' ? 'IOS' : 'Android'}`
+      );
       data = {
         imageFolderPath: folderPath,
-        mappings
+        mappings,
+        renameToNewName: !!(renameCheckbox && renameCheckbox.checked)
       };
       
       if (mappings.length === 0) {
@@ -176,6 +180,13 @@
           if (input) {
             input.value = config.data.imageFolderPath;
           }
+        }
+        
+        const renameCheckbox = document.getElementById(
+          `renameImageWithNewName${platform === 'ios' ? 'IOS' : 'Android'}`
+        );
+        if (renameCheckbox) {
+          renameCheckbox.checked = !!config.data.renameToNewName;
         }
         
         if (config.data.mappings && window.loadImageMappingsFromData) {

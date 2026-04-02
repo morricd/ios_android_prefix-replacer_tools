@@ -2,24 +2,35 @@ const fs = require('fs-extra');
 const path = require('path');
 
 // 图片替换处理
-async function replaceImages(projectPath, imageFolderPath, imageMappings, platform) {
+async function replaceImages(projectPath, imageFolderPath, imageMappings, platform, options = {}) {
+  const { renameToNewName = false, autoMatchByFileName = false } = options;
+  let mappingsToRun = Array.isArray(imageMappings) ? [...imageMappings] : [];
+  const sourceIndex = await buildImageSourceIndex(imageFolderPath);
+  
+  if (mappingsToRun.length === 0 && autoMatchByFileName) {
+    mappingsToRun = Array.from(sourceIndex.names).map((fileName) => ({
+      oldName: fileName,
+      newName: fileName
+    }));
+  }
+  
   const results = {
-    total: imageMappings.length,
+    total: mappingsToRun.length,
     success: 0,
     failed: 0,
     errors: []
   };
   
-  for (const mapping of imageMappings) {
+  for (const mapping of mappingsToRun) {
     if (!mapping.oldName || !mapping.newName) {
       continue; // 跳过空映射
     }
     
     try {
       if (platform === 'ios') {
-        await replaceIOSImage(projectPath, imageFolderPath, mapping);
+        await replaceIOSImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
       } else {
-        await replaceAndroidImage(projectPath, imageFolderPath, mapping);
+        await replaceAndroidImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
       }
       results.success++;
     } catch (error) {
@@ -35,8 +46,65 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
   return results;
 }
 
+async function buildImageSourceIndex(imageFolderPath) {
+  const imageFiles = await listImageFiles(imageFolderPath);
+  const byName = new Map();
+  
+  for (const filePath of imageFiles) {
+    const name = path.basename(filePath);
+    if (!byName.has(name)) {
+      byName.set(name, filePath);
+    }
+  }
+  
+  return {
+    byName,
+    names: new Set(byName.keys())
+  };
+}
+
+async function resolveNewImagePath(imageFolderPath, fileName, sourceIndex) {
+  const directPath = path.join(imageFolderPath, fileName);
+  if (await fs.pathExists(directPath)) {
+    return directPath;
+  }
+  
+  if (sourceIndex && sourceIndex.byName && sourceIndex.byName.has(fileName)) {
+    return sourceIndex.byName.get(fileName);
+  }
+  
+  return directPath;
+}
+
+async function listImageFiles(rootDir) {
+  const imagePaths = [];
+  const imageExtPattern = /\.(png|jpg|jpeg|webp|gif|bmp|svg|pdf)$/i;
+  
+  async function walk(currentDir) {
+    let items = [];
+    try {
+      items = await fs.readdir(currentDir, { withFileTypes: true });
+    } catch (error) {
+      return;
+    }
+    
+    for (const item of items) {
+      const fullPath = path.join(currentDir, item.name);
+      if (item.isDirectory()) {
+        await walk(fullPath);
+      } else if (imageExtPattern.test(item.name)) {
+        imagePaths.push(fullPath);
+      }
+    }
+  }
+  
+  await walk(rootDir);
+  return imagePaths;
+}
+
 // 替换 iOS 图片
-async function replaceIOSImage(projectPath, imageFolderPath, mapping) {
+async function replaceIOSImage(projectPath, imageFolderPath, mapping, options = {}) {
+  const { renameToNewName = false, sourceIndex = null } = options;
   const { oldName, newName } = mapping;
   
   // 查找 Assets.xcassets 目录
@@ -52,7 +120,7 @@ async function replaceIOSImage(projectPath, imageFolderPath, mapping) {
   }
   
   // 从源文件夹找新图片
-  const newImagePath = path.join(imageFolderPath, newName);
+  const newImagePath = await resolveNewImagePath(imageFolderPath, newName, sourceIndex);
   if (!await fs.pathExists(newImagePath)) {
     throw new Error(`新图片不存在: ${newName}`);
   }
@@ -61,14 +129,37 @@ async function replaceIOSImage(projectPath, imageFolderPath, mapping) {
   const contentsPath = path.join(oldImageset, 'Contents.json');
   const contents = JSON.parse(await fs.readFile(contentsPath, 'utf8'));
   
-  // 替换图片文件
-  for (const image of contents.images) {
-    if (image.filename) {
-      const targetPath = path.join(oldImageset, image.filename);
-      
-      // 根据 scale 复制对应的图片
-      // 如果只有一张图，复制到所有尺寸
-      await fs.copy(newImagePath, targetPath);
+  if (renameToNewName) {
+    const oldFiles = new Set();
+    for (const image of contents.images) {
+      if (image.filename) {
+        oldFiles.add(image.filename);
+        image.filename = newName;
+      }
+    }
+    
+    await fs.writeFile(contentsPath, JSON.stringify(contents, null, 2), 'utf8');
+    await fs.copy(newImagePath, path.join(oldImageset, newName));
+    
+    for (const oldFile of oldFiles) {
+      if (oldFile === newName) {
+        continue;
+      }
+      const oldPath = path.join(oldImageset, oldFile);
+      if (await fs.pathExists(oldPath)) {
+        await fs.remove(oldPath);
+      }
+    }
+  } else {
+    // 替换图片文件
+    for (const image of contents.images) {
+      if (image.filename) {
+        const targetPath = path.join(oldImageset, image.filename);
+        
+        // 根据 scale 复制对应的图片
+        // 如果只有一张图，复制到所有尺寸
+        await fs.copy(newImagePath, targetPath);
+      }
     }
   }
   
@@ -76,7 +167,8 @@ async function replaceIOSImage(projectPath, imageFolderPath, mapping) {
 }
 
 // 替换 Android 图片
-async function replaceAndroidImage(projectPath, imageFolderPath, mapping) {
+async function replaceAndroidImage(projectPath, imageFolderPath, mapping, options = {}) {
+  const { renameToNewName = false, sourceIndex = null } = options;
   const { oldName, newName } = mapping;
   
   // 查找所有 res 目录
@@ -96,15 +188,24 @@ async function replaceAndroidImage(projectPath, imageFolderPath, mapping) {
       
       if (await fs.pathExists(oldImagePath)) {
         // 从源文件夹找新图片
-        const newImagePath = path.join(imageFolderPath, newName);
+        const newImagePath = await resolveNewImagePath(imageFolderPath, newName, sourceIndex);
         
         if (!await fs.pathExists(newImagePath)) {
           console.warn(`新图片不存在: ${newName}，跳过 ${drawableDir}`);
           continue;
         }
         
-        // 复制新图片并覆盖旧图片
-        await fs.copy(newImagePath, oldImagePath);
+        if (renameToNewName) {
+          // 复制为新文件名，并移除旧文件名
+          const newTargetPath = path.join(drawableDir, newName);
+          await fs.copy(newImagePath, newTargetPath);
+          if (newTargetPath !== oldImagePath && await fs.pathExists(oldImagePath)) {
+            await fs.remove(oldImagePath);
+          }
+        } else {
+          // 复制新图片并覆盖旧图片（保持旧文件名）
+          await fs.copy(newImagePath, oldImagePath);
+        }
         replaced = true;
         
         console.log(`替换图片: ${drawableDir}/${oldName}`);

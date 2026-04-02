@@ -112,9 +112,8 @@ ipcMain.handle('process-files', async (event, options) => {
   const { sourcePath, targetPath, platform = 'ios' } = options;
   
   try {
-    // 确保目标文件夹存在
-    await fs.ensureDir(targetPath);
-    
+    const isImageOnly = !!options.imageOnly;
+    const shouldReplaceImages = !!options.replaceImages;
     const results = {
       processed: 0,
       copied: 0,
@@ -122,127 +121,146 @@ ipcMain.handle('process-files', async (event, options) => {
       files: [],
       renamedFiles: [],
       movedDirs: 0,
-      packageReorganized: false
+      packageReorganized: false,
+      imageOnly: isImageOnly,
+      imageTotal: 0,
+      imageReplaced: 0
     };
+
+    let allFiles = [];
+    const shouldProcessSourceFiles = !isImageOnly;
     
-    const allFiles = await getAllFiles(sourcePath, {
-      includePods: platform === 'ios' ? !!options.includePods : false
-    });
-    
-    for (const filePath of allFiles) {
-      const relativePath = path.relative(sourcePath, filePath);
-      let targetFilePath = path.join(targetPath, relativePath);
-      
-      // Android: 如果是代码文件且需要重组包目录
-      if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
-        targetFilePath = reorganizeAndroidPackage(
-          filePath, 
-          sourcePath, 
-          targetPath, 
-          options.oldPackage, 
-          options.newPackage
-        );
-        results.packageReorganized = true;
+    if (shouldProcessSourceFiles) {
+      if (!sourcePath) {
+        throw new Error('缺少源文件夹路径');
       }
       
-      // 确保目标目录存在
-      await fs.ensureDir(path.dirname(targetFilePath));
+      // 确保目标文件夹存在
+      await fs.ensureDir(targetPath);
       
-      try {
-        if (platform === 'ios' && filePath.endsWith('.swift')) {
-          // 处理 iOS Swift 文件
-          const renamedPath = await iosProcessor.processSwiftFile(
+      allFiles = await getAllFiles(sourcePath, {
+        includePods: platform === 'ios' ? !!options.includePods : false
+      });
+      
+      for (const filePath of allFiles) {
+        const relativePath = path.relative(sourcePath, filePath);
+        let targetFilePath = path.join(targetPath, relativePath);
+        
+        // Android: 如果是代码文件且需要重组包目录
+        if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
+          targetFilePath = reorganizeAndroidPackage(
             filePath, 
-            targetFilePath, 
-            options.oldPrefix, 
-            options.newPrefix
-          );
-          results.processed++;
-          results.files.push({ type: 'processed', file: relativePath });
-          
-          if (renamedPath !== targetFilePath) {
-            const oldName = path.basename(targetFilePath);
-            const newName = path.basename(renamedPath);
-            results.renamedFiles.push({
-              oldPath: relativePath,
-              newPath: path.relative(targetPath, renamedPath),
-              oldName: oldName,
-              newName: newName
-            });
-          }
-          
-        } else if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
-          // 处理 Android Kotlin/Java 文件
-          const renamedPath = await androidProcessor.processAndroidFile(
-            filePath,
-            targetFilePath,
-            options.oldPackage,
-            options.newPackage,
-            options.hasPrefix ? options.oldPrefix : null,
-            options.hasPrefix ? options.newPrefix : null
-          );
-          results.processed++;
-          results.files.push({ type: 'processed', file: relativePath });
-          
-          if (renamedPath !== targetFilePath) {
-            const oldName = path.basename(targetFilePath);
-            const newName = path.basename(renamedPath);
-            results.renamedFiles.push({
-              oldPath: relativePath,
-              newPath: path.relative(targetPath, renamedPath),
-              oldName: oldName,
-              newName: newName
-            });
-          }
-          
-        } else if (platform === 'android' && filePath.endsWith('.xml')) {
-          // 处理 Android XML 布局文件
-          await processAndroidXmlFile(
-            filePath,
-            targetFilePath,
-            options.oldPackage,
-            options.newPackage,
-            options.hasPrefix ? options.oldPrefix : null,
-            options.hasPrefix ? options.newPrefix : null
-          );
-          results.processed++;
-          results.files.push({ type: 'processed', file: relativePath });
-          
-        } else if (platform === 'android' && (filePath.endsWith('.pro') || filePath.includes('proguard'))) {
-          // 处理 Android ProGuard 规则文件
-          await processProGuardFile(
-            filePath,
-            targetFilePath,
-            options.oldPackage,
+            sourcePath, 
+            targetPath, 
+            options.oldPackage, 
             options.newPackage
           );
-          results.processed++;
-          results.files.push({ type: 'processed', file: relativePath });
-          
-        } else {
-          // 复制其他文件
-          await fs.copy(filePath, targetFilePath);
-          results.copied++;
-          results.files.push({ type: 'copied', file: relativePath });
+          results.packageReorganized = true;
         }
         
-        // 发送进度更新
-        event.sender.send('process-progress', {
-          current: results.processed + results.copied,
-          total: allFiles.length,
-          file: relativePath
-        });
+        // 确保目标目录存在
+        await fs.ensureDir(path.dirname(targetFilePath));
         
-      } catch (error) {
-        results.errors.push({
-          file: relativePath,
-          error: error.message
-        });
+        try {
+          if (platform === 'ios' && filePath.endsWith('.swift')) {
+            // 处理 iOS Swift 文件
+            const renamedPath = await iosProcessor.processSwiftFile(
+              filePath, 
+              targetFilePath, 
+              options.oldPrefix, 
+              options.newPrefix
+            );
+            results.processed++;
+            results.files.push({ type: 'processed', file: relativePath });
+            
+            if (renamedPath !== targetFilePath) {
+              const oldName = path.basename(targetFilePath);
+              const newName = path.basename(renamedPath);
+              results.renamedFiles.push({
+                oldPath: relativePath,
+                newPath: path.relative(targetPath, renamedPath),
+                oldName: oldName,
+                newName: newName
+              });
+            }
+            
+          } else if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
+            // 处理 Android Kotlin/Java 文件
+            const renamedPath = await androidProcessor.processAndroidFile(
+              filePath,
+              targetFilePath,
+              options.oldPackage,
+              options.newPackage,
+              options.hasPrefix ? options.oldPrefix : null,
+              options.hasPrefix ? options.newPrefix : null
+            );
+            results.processed++;
+            results.files.push({ type: 'processed', file: relativePath });
+            
+            if (renamedPath !== targetFilePath) {
+              const oldName = path.basename(targetFilePath);
+              const newName = path.basename(renamedPath);
+              results.renamedFiles.push({
+                oldPath: relativePath,
+                newPath: path.relative(targetPath, renamedPath),
+                oldName: oldName,
+                newName: newName
+              });
+            }
+            
+          } else if (platform === 'android' && filePath.endsWith('.xml')) {
+            // 处理 Android XML 布局文件
+            await processAndroidXmlFile(
+              filePath,
+              targetFilePath,
+              options.oldPackage,
+              options.newPackage,
+              options.hasPrefix ? options.oldPrefix : null,
+              options.hasPrefix ? options.newPrefix : null
+            );
+            results.processed++;
+            results.files.push({ type: 'processed', file: relativePath });
+            
+          } else if (platform === 'android' && (filePath.endsWith('.pro') || filePath.includes('proguard'))) {
+            // 处理 Android ProGuard 规则文件
+            await processProGuardFile(
+              filePath,
+              targetFilePath,
+              options.oldPackage,
+              options.newPackage
+            );
+            results.processed++;
+            results.files.push({ type: 'processed', file: relativePath });
+            
+          } else {
+            // 复制其他文件
+            await fs.copy(filePath, targetFilePath);
+            results.copied++;
+            results.files.push({ type: 'copied', file: relativePath });
+          }
+          
+          // 发送进度更新
+          event.sender.send('process-progress', {
+            current: results.processed + results.copied,
+            total: allFiles.length,
+            file: relativePath
+          });
+          
+        } catch (error) {
+          results.errors.push({
+            file: relativePath,
+            error: error.message
+          });
+        }
+      }
+    } else {
+      if (!targetPath || !await fs.pathExists(targetPath)) {
+        throw new Error('目标目录不存在，无法执行仅图片替换');
       }
     }
     
     // iOS: 处理完所有文件后，更新 Xcode 项目文件
-    if (platform === 'ios') {
+    if (platform === 'ios' && shouldProcessSourceFiles) {
       event.sender.send('process-progress', {
         current: allFiles.length,
         total: allFiles.length,
@@ -253,7 +271,7 @@ ipcMain.handle('process-files', async (event, options) => {
     }
     
     // iOS: 重命名文件和 Group（如果勾选了）
-    if (platform === 'ios' && options.renameFilesAndGroups) {
+    if (platform === 'ios' && shouldProcessSourceFiles && options.renameFilesAndGroups) {
       event.sender.send('process-progress', {
         current: allFiles.length,
         total: allFiles.length,
@@ -288,7 +306,7 @@ ipcMain.handle('process-files', async (event, options) => {
     }
     
     // iOS: 添加随机代码（如果勾选了）
-    if (platform === 'ios' && options.addRandomCode) {
+    if (platform === 'ios' && shouldProcessSourceFiles && options.addRandomCode) {
       event.sender.send('process-progress', {
         current: allFiles.length,
         total: allFiles.length,
@@ -316,7 +334,7 @@ ipcMain.handle('process-files', async (event, options) => {
     }
     
     // Android: 更新 Gradle 配置文件
-    if (platform === 'android') {
+    if (platform === 'android' && shouldProcessSourceFiles) {
       event.sender.send('process-progress', {
         current: allFiles.length,
         total: allFiles.length,
@@ -327,7 +345,7 @@ ipcMain.handle('process-files', async (event, options) => {
     }
     
     // Android: 添加随机代码（如果勾选了）
-    if (platform === 'android' && options.addRandomCode) {
+    if (platform === 'android' && shouldProcessSourceFiles && options.addRandomCode) {
       event.sender.send('process-progress', {
         current: allFiles.length,
         total: allFiles.length,
@@ -363,6 +381,39 @@ ipcMain.handle('process-files', async (event, options) => {
       }
       
       results.randomCodeAdded = codeFiles.length;
+    }
+
+    if (shouldReplaceImages) {
+      event.sender.send('process-progress', {
+        current: Math.max(allFiles.length, 1),
+        total: Math.max(allFiles.length, 1),
+        file: '正在替换图片资源...'
+      });
+      
+      const imageResults = await imageReplacer.replaceImages(
+        targetPath,
+        options.imageFolderPath,
+        options.imageMappings || [],
+        platform,
+        {
+          renameToNewName: !!options.imageRenameToNewName,
+          autoMatchByFileName: !!options.imageAutoMatch
+        }
+      );
+      results.imageTotal = imageResults.total;
+      results.imageReplaced = imageResults.success;
+      
+      if (imageResults.errors && imageResults.errors.length > 0) {
+        imageResults.errors.forEach((item) => {
+          const mappingLabel = item.mapping
+            ? `${item.mapping.oldName || '-'} -> ${item.mapping.newName || '-'}`
+            : 'unknown mapping';
+          results.errors.push({
+            file: `图片映射 ${mappingLabel}`,
+            error: item.error
+          });
+        });
+      }
     }
     
     return {

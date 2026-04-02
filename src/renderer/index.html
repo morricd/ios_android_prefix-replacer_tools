@@ -18,7 +18,7 @@
       <section class="section">
         <h2>📁 选择文件夹</h2>
         
-        <div class="input-group">
+        <div class="input-group" id="sourcePathGroup">
           <label for="sourcePath">源文件夹:</label>
           <div class="path-selector">
             <input type="text" id="sourcePath" placeholder="选择包含 Swift 文件的源文件夹" readonly>
@@ -56,13 +56,21 @@
             </span>
           </label>
         </div>
+
+        <div class="prefix-optional" style="margin-top: 15px;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="onlyReplaceProjectImages">
+            <span>只替换项目图片</span>
+          </label>
+          <span class="hint">仅对目标目录执行图片替换，不处理代码与前缀配置</span>
+        </div>
       </section>
 
       <!-- iOS 配置 -->
       <section class="section" id="iosConfig">
         <h2>✏️ iOS 配置 - 类前缀</h2>
         
-        <div class="prefix-inputs">
+        <div class="prefix-inputs code-only-option">
           <div class="input-group">
             <label for="oldPrefix">旧前缀:</label>
             <input type="text" id="oldPrefix" placeholder="例如: ABC" class="prefix-input">
@@ -78,23 +86,23 @@
           </div>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider code-only-option"></div>
 
-        <div class="prefix-optional">
+        <div class="prefix-optional code-only-option">
           <label class="checkbox-label">
             <input type="checkbox" id="renameFilesAndGroups">
             <span>同时修改文件和 Xcode Group 前缀（可选）</span>
           </label>
         </div>
 
-        <div class="prefix-optional" style="margin-top: 10px;">
+        <div class="prefix-optional code-only-option" style="margin-top: 10px;">
           <label class="checkbox-label">
             <input type="checkbox" id="copyPodsIOS">
             <span>复制 Pods 目录（可选）</span>
           </label>
         </div>
 
-        <div id="filesGroupsInputs" class="prefix-inputs" style="display: none; margin-top: 15px;">
+        <div id="filesGroupsInputs" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
           <div class="input-group">
             <label for="oldFileGroupPrefix">旧文件前缀:</label>
             <input type="text" id="oldFileGroupPrefix" placeholder="例如: ABC" class="prefix-input">
@@ -110,9 +118,9 @@
           </div>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider code-only-option"></div>
 
-        <div class="variable-modify-section">
+        <div class="variable-modify-section code-only-option">
           <label class="checkbox-label">
             <input type="checkbox" id="modifyVariablesIOS">
             <span>修改类变量值（可选）</span>
@@ -148,7 +156,7 @@
           </div>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider code-only-option"></div>
 
         <div class="image-replace-section">
           <label class="checkbox-label">
@@ -182,11 +190,20 @@
               <span class="hint">包含要替换的新图片的文件夹</span>
             </div>
 
-            <div style="margin-top: 15px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <label style="font-weight: 500;">图片映射规则:</label>
+            <div class="prefix-optional" style="margin-top: 10px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="renameImageWithNewNameIOS">
+                <span>替换后使用新图片名（默认保留旧文件名）</span>
+              </label>
+              <span class="hint">开启后会将旧文件名替换为新文件名，可能需要你同步检查资源引用</span>
+            </div>
+
+              <div style="margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <label style="font-weight: 500;">图片映射规则（可选）:</label>
                 <button id="addImageMappingIOS" class="add-button">+ 添加规则</button>
-              </div>
+                </div>
+              <span class="hint">不添加规则时，将按新图片文件名自动同名替换</span>
               
               <div id="imageMappingListIOS" class="mapping-list">
                 <!-- 动态添加的映射规则 -->
@@ -195,9 +212,9 @@
           </div>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider code-only-option"></div>
 
-        <div class="random-code-section">
+        <div class="random-code-section code-only-option">
           <label class="checkbox-label">
             <input type="checkbox" id="addRandomCodeIOS">
             <span>添加随机代码（增加二进制差异）</span>
@@ -232,30 +249,30 @@
         <h2>✏️ Android 配置</h2>
         
         <div class="android-config">
-          <div class="input-group">
+          <div class="input-group code-only-option">
             <label for="oldPackage">旧包名:</label>
             <input type="text" id="oldPackage" placeholder="例如: com.yndcyst.shop" class="package-input">
             <span class="hint">要被替换的包名（必填）</span>
           </div>
 
-          <div class="arrow-vertical">↓</div>
+          <div class="arrow-vertical code-only-option">↓</div>
 
-          <div class="input-group">
+          <div class="input-group code-only-option">
             <label for="newPackage">新包名:</label>
             <input type="text" id="newPackage" placeholder="例如: com.sss.shop" class="package-input">
             <span class="hint">新的包名（必填）</span>
           </div>
 
-          <div class="divider"></div>
+          <div class="divider code-only-option"></div>
 
-          <div class="prefix-optional">
+          <div class="prefix-optional code-only-option">
             <label class="checkbox-label">
               <input type="checkbox" id="hasAndroidPrefix">
               <span>同时修改类前缀（可选）</span>
             </label>
           </div>
 
-          <div id="androidPrefixInputs" class="prefix-inputs" style="display: none; margin-top: 15px;">
+          <div id="androidPrefixInputs" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
             <div class="input-group">
               <label for="oldAndroidPrefix">旧前缀:</label>
               <input type="text" id="oldAndroidPrefix" placeholder="例如: ABC" class="prefix-input">
@@ -271,9 +288,9 @@
             </div>
           </div>
 
-          <div class="divider"></div>
+          <div class="divider code-only-option"></div>
 
-          <div class="variable-modify-section">
+          <div class="variable-modify-section code-only-option">
             <label class="checkbox-label">
               <input type="checkbox" id="modifyVariablesAndroid">
               <span>修改类变量值（可选）</span>
@@ -309,7 +326,7 @@
             </div>
           </div>
 
-          <div class="divider"></div>
+          <div class="divider code-only-option"></div>
 
           <div class="image-replace-section">
             <label class="checkbox-label">
@@ -343,11 +360,20 @@
                 <span class="hint">包含要替换的新图片的文件夹（支持 drawable/mipmap）</span>
               </div>
 
+              <div class="prefix-optional" style="margin-top: 10px;">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="renameImageWithNewNameAndroid">
+                  <span>替换后使用新图片名（默认保留旧文件名）</span>
+                </label>
+                <span class="hint">开启后会将旧文件名替换为新文件名，可能需要你同步检查资源引用</span>
+              </div>
+
               <div style="margin-top: 15px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                  <label style="font-weight: 500;">图片映射规则:</label>
+                  <label style="font-weight: 500;">图片映射规则（可选）:</label>
                   <button id="addImageMappingAndroid" class="add-button">+ 添加规则</button>
                 </div>
+                <span class="hint">不添加规则时，将按新图片文件名自动同名替换</span>
                 
                 <div id="imageMappingListAndroid" class="mapping-list">
                   <!-- 动态添加的映射规则 -->
@@ -356,9 +382,9 @@
             </div>
           </div>
 
-          <div class="divider"></div>
+          <div class="divider code-only-option"></div>
 
-          <div class="random-code-section">
+          <div class="random-code-section code-only-option">
             <label class="checkbox-label">
               <input type="checkbox" id="addRandomCode">
               <span>添加随机代码（增加二进制差异）</span>
