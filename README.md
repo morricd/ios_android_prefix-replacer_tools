@@ -6,6 +6,20 @@
 - 项目图片批量替换（支持仅图片模式）
 - 可选未替换图片重编码（用于统一图片产物）
 
+适用场景（关键词）：
+- iOS 马甲包 / Android 马甲包
+- App 多版本包 / App Variant / App Clone Workflow
+- 包名替换 / 类名前缀替换 / 资源批量替换
+- iOS Android 重构工具 / 批量改名工具
+
+说明：本项目仅用于合法合规的软件工程场景（如多环境构建、多品牌版本管理、测试包生成等）。
+
+## GitHub Topics（建议）
+
+建议在仓库 Settings -> General -> Topics 中添加以下中英文标签：
+
+`马甲包`, `多版本打包`, `包名替换`, `app-variant`, `app-clone`, `white-label-app`, `bundle-id`, `package-name`, `ios`, `android`, `electron`, `refactor-tool`, `xcassets`, `swift`, `objective-c`, `kotlin`, `java`
+
 ## 功能概览
 
 ### 1. iOS 重构能力
