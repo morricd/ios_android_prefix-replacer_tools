@@ -33,6 +33,12 @@
             <button id="selectTarget" class="btn btn-secondary">选择...</button>
           </div>
         </div>
+
+        <div class="input-group">
+          <label for="ignoreDirNames">忽略目录（可选）:</label>
+          <input type="text" id="ignoreDirNames" placeholder="例如: Pods,fastlane,.git,build" class="prefix-input">
+          <span class="hint">扫描和处理时跳过这些目录，多个目录用英文逗号分隔</span>
+        </div>
       </section>
 
       <!-- 平台选择 -->
@@ -83,6 +89,81 @@
             <label for="newPrefix">新前缀:</label>
             <input type="text" id="newPrefix" placeholder="例如: XYZ" class="prefix-input">
             <span class="hint">新的类前缀</span>
+          </div>
+        </div>
+
+        <div class="divider code-only-option"></div>
+
+        <div class="prefix-optional code-only-option">
+          <label class="checkbox-label">
+            <input type="checkbox" id="renameProjectNameIOS">
+            <span>一键修改 iOS 工程名（可选）</span>
+          </label>
+        </div>
+
+        <div id="projectNameInputsIOS" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
+          <div class="input-group">
+            <label for="oldProjectNameIOS">旧工程名:</label>
+            <input type="text" id="oldProjectNameIOS" placeholder="例如: OldApp" class="prefix-input">
+            <span class="hint">当前项目工程名（不含后缀）</span>
+          </div>
+
+          <div class="arrow">→</div>
+
+          <div class="input-group">
+            <label for="newProjectNameIOS">新工程名:</label>
+            <input type="text" id="newProjectNameIOS" placeholder="例如: NewApp" class="prefix-input">
+            <span class="hint">新的工程名（不含后缀）</span>
+          </div>
+        </div>
+
+        <div class="divider code-only-option"></div>
+
+        <div class="prefix-optional code-only-option">
+          <label class="checkbox-label">
+            <input type="checkbox" id="deleteCommentsIOS">
+            <span>清理代码注释（可选）</span>
+          </label>
+        </div>
+
+        <div class="divider code-only-option"></div>
+
+        <div class="prefix-optional code-only-option">
+          <label class="checkbox-label">
+            <input type="checkbox" id="handleXcassetsIOS">
+            <span>批量重命名 xcassets 资源（可选）</span>
+          </label>
+        </div>
+
+        <div id="xcassetsInputsIOS" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
+          <div class="input-group">
+            <label for="oldAssetPrefixIOS">旧资源前缀:</label>
+            <input type="text" id="oldAssetPrefixIOS" placeholder="例如: OLD" class="prefix-input">
+          </div>
+          <div class="arrow">→</div>
+          <div class="input-group">
+            <label for="newAssetPrefixIOS">新资源前缀:</label>
+            <input type="text" id="newAssetPrefixIOS" placeholder="例如: NEW" class="prefix-input">
+          </div>
+        </div>
+
+        <div class="divider code-only-option"></div>
+
+        <div class="prefix-optional code-only-option">
+          <label class="checkbox-label">
+            <input type="checkbox" id="spamCodeOutIOS">
+            <span>输出独立垃圾代码文件（可选）</span>
+          </label>
+        </div>
+
+        <div id="spamCodeInputsIOS" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
+          <div class="input-group">
+            <label for="spamCodePrefixIOS">垃圾代码前缀:</label>
+            <input type="text" id="spamCodePrefixIOS" placeholder="例如: Spam" class="prefix-input" value="Spam">
+          </div>
+          <div class="input-group">
+            <label for="spamMethodCountIOS">方法数量:</label>
+            <input type="number" id="spamMethodCountIOS" min="1" max="20" value="3" class="prefix-input">
           </div>
         </div>
 
@@ -269,6 +350,35 @@
             <label for="newPackage">新包名:</label>
             <input type="text" id="newPackage" placeholder="例如: com.sss.shop" class="package-input">
             <span class="hint">新的包名（必填）</span>
+          </div>
+
+          <div class="divider code-only-option"></div>
+
+          <div class="prefix-optional code-only-option">
+            <label class="checkbox-label">
+              <input type="checkbox" id="deleteCommentsAndroid">
+              <span>清理代码注释（可选）</span>
+            </label>
+          </div>
+
+          <div class="divider code-only-option"></div>
+
+          <div class="prefix-optional code-only-option">
+            <label class="checkbox-label">
+              <input type="checkbox" id="spamCodeOutAndroid">
+              <span>输出独立垃圾代码文件（可选）</span>
+            </label>
+          </div>
+
+          <div id="spamCodeInputsAndroid" class="prefix-inputs code-only-option" style="display: none; margin-top: 15px;">
+            <div class="input-group">
+              <label for="spamCodePrefixAndroid">垃圾代码前缀:</label>
+              <input type="text" id="spamCodePrefixAndroid" placeholder="例如: Spam" class="prefix-input" value="Spam">
+            </div>
+            <div class="input-group">
+              <label for="spamMethodCountAndroid">方法数量:</label>
+              <input type="number" id="spamMethodCountAndroid" min="1" max="20" value="3" class="prefix-input">
+            </div>
           </div>
 
           <div class="divider code-only-option"></div>

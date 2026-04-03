@@ -79,6 +79,25 @@ async function processSwiftFile(sourcePath, targetPath, oldPrefix, newPrefix) {
   return newTargetPath;
 }
 
+// 处理 iOS Objective-C 文件(.h/.m/.mm)
+async function processObjcFile(sourcePath, targetPath, oldPrefix, newPrefix) {
+  let content = await fs.readFile(sourcePath, 'utf8');
+  content = replacePrefixedIdentifiers(content, oldPrefix, newPrefix);
+  
+  const fileName = path.basename(targetPath);
+  let newTargetPath = targetPath;
+  
+  if (fileName.startsWith(oldPrefix) && !fileName.startsWith(newPrefix)) {
+    const newFileName = fileName.replace(new RegExp(`^${escapeRegExp(oldPrefix)}`), newPrefix);
+    newTargetPath = path.join(path.dirname(targetPath), newFileName);
+  }
+  
+  await fs.writeFile(newTargetPath, content, 'utf8');
+  validateReplacement(content, oldPrefix, newPrefix, newTargetPath);
+  
+  return newTargetPath;
+}
+
 // 检查是否应该添加随机代码
 function shouldAddRandomCode(content) {
   // 检查是否是 protocol（接口）
@@ -359,6 +378,7 @@ async function renameXcodeGroups(projectPath, oldPrefix, newPrefix, renamedFiles
 
 module.exports = {
   processSwiftFile,
+  processObjcFile,
   addRandomCodeToSwiftFile,
   renameFilesWithPrefix,
   renameXcodeGroups,

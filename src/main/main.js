@@ -70,15 +70,21 @@ ipcMain.handle('select-target-folder', async () => {
 // 扫描文件
 ipcMain.handle('scan-files', async (event, sourcePath, platform = 'ios', extraOptions = {}) => {
   try {
+    const ignoreDirNames = normalizeIgnoreDirNames(extraOptions.ignoreDirNames);
     const files = await getAllFiles(sourcePath, {
-      includePods: platform === 'ios' ? !!extraOptions.includePods : false
+      includePods: platform === 'ios' ? !!extraOptions.includePods : false,
+      ignoreDirNames
     });
     
     let codeFiles, otherFiles;
     
     if (platform === 'ios') {
-      codeFiles = files.filter(f => f.endsWith('.swift'));
-      otherFiles = files.filter(f => !f.endsWith('.swift'));
+      codeFiles = files.filter(f =>
+        f.endsWith('.swift') || f.endsWith('.h') || f.endsWith('.m') || f.endsWith('.mm')
+      );
+      otherFiles = files.filter(f =>
+        !f.endsWith('.swift') && !f.endsWith('.h') && !f.endsWith('.m') && !f.endsWith('.mm')
+      );
     } else { // Android
       // Android 需要处理 .kt, .java 和 .xml 文件
       codeFiles = files.filter(f => 
@@ -115,7 +121,8 @@ ipcMain.handle('scan-image-replacements', async (event, options = {}) => {
       imageFolderPath,
       platform = 'ios',
       imageMappings = [],
-      imageAutoMatch = false
+      imageAutoMatch = false,
+      ignoreDirNames = []
     } = options;
     
     if (!projectPath) {
@@ -130,7 +137,10 @@ ipcMain.handle('scan-image-replacements', async (event, options = {}) => {
       imageFolderPath,
       imageMappings,
       platform,
-      { autoMatchByFileName: !!imageAutoMatch }
+      {
+        autoMatchByFileName: !!imageAutoMatch,
+        ignoreDirNames: normalizeIgnoreDirNames(ignoreDirNames)
+      }
     );
     
     return {
@@ -150,6 +160,7 @@ ipcMain.handle('process-files', async (event, options) => {
   const { sourcePath, targetPath, platform = 'ios' } = options;
   
   try {
+    const ignoreDirNames = normalizeIgnoreDirNames(options.ignoreDirNames);
     const isImageOnly = !!options.imageOnly;
     const shouldReplaceImages = !!options.replaceImages;
     const results = {
@@ -163,7 +174,10 @@ ipcMain.handle('process-files', async (event, options) => {
       imageOnly: isImageOnly,
       imageTotal: 0,
       imageReplaced: 0,
-      normalizedImages: 0
+      normalizedImages: 0,
+      projectRenamed: 0,
+      renamedAssets: 0,
+      spamCodeFiles: 0
     };
 
     let allFiles = [];
@@ -178,7 +192,8 @@ ipcMain.handle('process-files', async (event, options) => {
       await fs.ensureDir(targetPath);
       
       allFiles = await getAllFiles(sourcePath, {
-        includePods: platform === 'ios' ? !!options.includePods : false
+        includePods: platform === 'ios' ? !!options.includePods : false,
+        ignoreDirNames
       });
       
       for (const filePath of allFiles) {
@@ -223,6 +238,27 @@ ipcMain.handle('process-files', async (event, options) => {
               });
             }
             
+          } else if (platform === 'ios' && (filePath.endsWith('.h') || filePath.endsWith('.m') || filePath.endsWith('.mm'))) {
+            // 处理 iOS Objective-C 文件
+            const renamedPath = await iosProcessor.processObjcFile(
+              filePath,
+              targetFilePath,
+              options.oldPrefix,
+              options.newPrefix
+            );
+            results.processed++;
+            results.files.push({ type: 'processed', file: relativePath });
+            
+            if (renamedPath !== targetFilePath) {
+              const oldName = path.basename(targetFilePath);
+              const newName = path.basename(renamedPath);
+              results.renamedFiles.push({
+                oldPath: relativePath,
+                newPath: path.relative(targetPath, renamedPath),
+                oldName: oldName,
+                newName: newName
+              });
+            }
           } else if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
             // 处理 Android Kotlin/Java 文件
             const renamedPath = await androidProcessor.processAndroidFile(
@@ -278,6 +314,18 @@ ipcMain.handle('process-files', async (event, options) => {
             results.files.push({ type: 'copied', file: relativePath });
           }
           
+          if (options.deleteComments && isCodeFileForPlatform(filePath, platform)) {
+            const effectiveTargetPath = await resolveActualTargetPath(
+              filePath,
+              targetFilePath,
+              sourcePath,
+              targetPath,
+              platform,
+              options
+            );
+            await stripCommentsInFile(effectiveTargetPath);
+          }
+          
           // 发送进度更新
           event.sender.send('process-progress', {
             current: results.processed + results.copied,
@@ -307,6 +355,49 @@ ipcMain.handle('process-files', async (event, options) => {
       });
       
       await updateXcodeProject(targetPath, options.oldPrefix, options.newPrefix, results.renamedFiles);
+    }
+
+    if (platform === 'ios' && shouldProcessSourceFiles && options.renameProjectName) {
+      event.sender.send('process-progress', {
+        current: allFiles.length,
+        total: allFiles.length,
+        file: '正在修改 iOS 工程名...'
+      });
+      
+      try {
+        const renameResult = await renameIOSProjectName(
+          targetPath,
+          options.oldProjectName,
+          options.newProjectName
+        );
+        results.projectRenamed = renameResult.updatedFiles + renameResult.renamedContainers;
+      } catch (error) {
+        results.errors.push({
+          file: 'iOS 工程名修改',
+          error: error.message
+        });
+      }
+    }
+
+    if (platform === 'ios' && shouldProcessSourceFiles && options.handleXcassets) {
+      event.sender.send('process-progress', {
+        current: allFiles.length,
+        total: allFiles.length,
+        file: '正在批量处理 xcassets 资源名...'
+      });
+      try {
+        const renamedAssets = await renameXcassetsResources(
+          targetPath,
+          options.oldAssetPrefix,
+          options.newAssetPrefix
+        );
+        results.renamedAssets = renamedAssets;
+      } catch (error) {
+        results.errors.push({
+          file: 'xcassets 重命名',
+          error: error.message
+        });
+      }
     }
     
     // iOS: 重命名文件和 Group（如果勾选了）
@@ -422,6 +513,28 @@ ipcMain.handle('process-files', async (event, options) => {
       results.randomCodeAdded = codeFiles.length;
     }
 
+    if (shouldProcessSourceFiles && options.spamCodeOut) {
+      event.sender.send('process-progress', {
+        current: allFiles.length,
+        total: allFiles.length,
+        file: '正在输出独立垃圾代码文件...'
+      });
+      try {
+        const spamFiles = await generateSeparateSpamCodeFiles(
+          targetPath,
+          platform,
+          options.spamCodePrefix || 'Spam',
+          options.spamMethodCount || 3
+        );
+        results.spamCodeFiles = spamFiles;
+      } catch (error) {
+        results.errors.push({
+          file: '垃圾代码输出',
+          error: error.message
+        });
+      }
+    }
+
     if (shouldReplaceImages) {
       event.sender.send('process-progress', {
         current: Math.max(allFiles.length, 1),
@@ -436,7 +549,8 @@ ipcMain.handle('process-files', async (event, options) => {
         platform,
         {
           renameToNewName: !!options.imageRenameToNewName,
-          autoMatchByFileName: !!options.imageAutoMatch
+          autoMatchByFileName: !!options.imageAutoMatch,
+          ignoreDirNames
         }
       );
       results.imageTotal = imageResults.total;
@@ -446,7 +560,8 @@ ipcMain.handle('process-files', async (event, options) => {
         const normalizeResults = await imageReplacer.normalizeUnreplacedImages(
           targetPath,
           platform,
-          imageResults.replacedFiles || []
+          imageResults.replacedFiles || [],
+          { ignoreDirNames }
         );
         results.normalizedImages = normalizeResults.normalizedCount || 0;
       }
@@ -479,7 +594,7 @@ ipcMain.handle('process-files', async (event, options) => {
 
 // 递归获取所有文件
 async function getAllFiles(dirPath, options = {}, arrayOfFiles = []) {
-  const { includePods = false } = options;
+  const { includePods = false, ignoreDirNames = [] } = options;
   const files = await fs.readdir(dirPath);
   
   for (const file of files) {
@@ -498,6 +613,10 @@ async function getAllFiles(dirPath, options = {}, arrayOfFiles = []) {
       continue;
     }
     
+    if (isIgnoredDirectory(file, ignoreDirNames)) {
+      continue;
+    }
+    
     if (stat.isDirectory()) {
       arrayOfFiles = await getAllFiles(filePath, options, arrayOfFiles);
     } else {
@@ -506,6 +625,149 @@ async function getAllFiles(dirPath, options = {}, arrayOfFiles = []) {
   }
   
   return arrayOfFiles;
+}
+
+function normalizeIgnoreDirNames(ignoreDirNames) {
+  if (!ignoreDirNames) return [];
+  if (Array.isArray(ignoreDirNames)) {
+    return ignoreDirNames.map((item) => String(item).trim()).filter(Boolean);
+  }
+  return String(ignoreDirNames)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isIgnoredDirectory(dirName, ignoreDirNames = []) {
+  if (!dirName) return false;
+  return ignoreDirNames.includes(dirName);
+}
+
+function isCodeFileForPlatform(filePath, platform) {
+  if (platform === 'ios') {
+    return filePath.endsWith('.swift') || filePath.endsWith('.h') || filePath.endsWith('.m') || filePath.endsWith('.mm');
+  }
+  return filePath.endsWith('.kt') || filePath.endsWith('.java');
+}
+
+async function resolveActualTargetPath(filePath, defaultTargetPath, sourcePath, targetPath, platform, options) {
+  let resolved = defaultTargetPath;
+  const fileName = path.basename(defaultTargetPath);
+  
+  if (platform === 'android' && (filePath.endsWith('.kt') || filePath.endsWith('.java'))) {
+    resolved = reorganizeAndroidPackage(filePath, sourcePath, targetPath, options.oldPackage, options.newPackage);
+  }
+  
+  if (platform === 'ios' && options.oldPrefix && options.newPrefix && fileName.startsWith(options.oldPrefix)) {
+    const renamed = fileName.replace(new RegExp(`^${options.oldPrefix}`), options.newPrefix);
+    resolved = path.join(path.dirname(resolved), renamed);
+  }
+  
+  return resolved;
+}
+
+async function stripCommentsInFile(filePath) {
+  if (!(await fs.pathExists(filePath))) return false;
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.swift', '.h', '.m', '.mm', '.kt', '.java'].includes(ext)) {
+    return false;
+  }
+  const content = await fs.readFile(filePath, 'utf8');
+  let updated = content;
+  
+  // 简化实现：先去块注释，再去行注释，保留空行以降低结构风险
+  updated = updated.replace(/\/\*[\s\S]*?\*\//g, '');
+  updated = updated.replace(/(^|[^:])\/\/.*$/gm, '$1');
+  
+  if (updated !== content) {
+    await fs.writeFile(filePath, updated, 'utf8');
+    return true;
+  }
+  return false;
+}
+
+async function renameXcassetsResources(projectPath, oldPrefix, newPrefix) {
+  if (!oldPrefix || !newPrefix) {
+    return 0;
+  }
+  
+  let renamed = 0;
+  const assetsDirs = [];
+  
+  async function findAssets(dirPath, depth = 0) {
+    if (depth > 6) return;
+    const items = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const item of items) {
+      if (!item.isDirectory()) continue;
+      const fullPath = path.join(dirPath, item.name);
+      if (item.name.endsWith('.xcassets')) {
+        assetsDirs.push(fullPath);
+      } else if (!item.name.startsWith('.') && item.name !== 'Pods' && item.name !== 'build') {
+        await findAssets(fullPath, depth + 1);
+      }
+    }
+  }
+  
+  await findAssets(projectPath);
+  
+  for (const assetsDir of assetsDirs) {
+    const items = await fs.readdir(assetsDir, { withFileTypes: true });
+    for (const item of items) {
+      if (!item.isDirectory()) continue;
+      if (!(item.name.endsWith('.imageset') || item.name.endsWith('.appiconset'))) continue;
+      if (!item.name.startsWith(oldPrefix)) continue;
+      const newName = item.name.replace(new RegExp(`^${oldPrefix}`), newPrefix);
+      const oldPath = path.join(assetsDir, item.name);
+      const newPath = path.join(assetsDir, newName);
+      if (!(await fs.pathExists(newPath))) {
+        await fs.rename(oldPath, newPath);
+        renamed++;
+      }
+    }
+  }
+  
+  return renamed;
+}
+
+async function generateSeparateSpamCodeFiles(projectPath, platform, prefix, methodCount = 3) {
+  const outDir = path.join(projectPath, '__SpamCode');
+  await fs.ensureDir(outDir);
+  
+  const allFiles = await getAllFiles(projectPath, {
+    includePods: false,
+    ignoreDirNames: ['build', 'DerivedData', '.git', 'node_modules', '__SpamCode']
+  });
+  
+  let generated = 0;
+  if (platform === 'ios') {
+    const swiftFiles = allFiles.filter((f) => f.endsWith('.swift'));
+    for (const swiftFile of swiftFiles) {
+      const className = path.basename(swiftFile, '.swift');
+      const outFile = path.join(outDir, `${className}+${prefix}Ext.swift`);
+      const methods = [];
+      for (let i = 0; i < methodCount; i++) {
+        methods.push(`    func ${prefix}Method${i}_${Date.now().toString().slice(-4)}() -> Int { return ${i} }`);
+      }
+      const content = `import Foundation\n\nextension ${className} {\n${methods.join('\n')}\n}\n`;
+      await fs.writeFile(outFile, content, 'utf8');
+      generated++;
+    }
+  } else {
+    const javaFiles = allFiles.filter((f) => f.endsWith('.kt') || f.endsWith('.java'));
+    for (const codeFile of javaFiles) {
+      const className = path.basename(codeFile, path.extname(codeFile));
+      const outFile = path.join(outDir, `${className}${prefix}Helper.java`);
+      const methods = [];
+      for (let i = 0; i < methodCount; i++) {
+        methods.push(`    public static int ${prefix}Method${i}_${Date.now().toString().slice(-4)}() { return ${i}; }`);
+      }
+      const content = `public class ${className}${prefix}Helper {\n${methods.join('\n')}\n}\n`;
+      await fs.writeFile(outFile, content, 'utf8');
+      generated++;
+    }
+  }
+  
+  return generated;
 }
 
 // 处理 Swift 文件
@@ -1055,6 +1317,69 @@ async function updateXcodeProject(projectPath, oldPrefix, newPrefix, renamedFile
     console.error('更新 Xcode 项目文件时出错:', error.message);
     // 不抛出错误，因为这不是致命问题
   }
+}
+
+async function renameIOSProjectName(projectPath, oldProjectName, newProjectName) {
+  if (!oldProjectName || !newProjectName || oldProjectName === newProjectName) {
+    return { renamed: false, renamedContainers: 0, updatedFiles: 0 };
+  }
+  
+  let renamedContainers = 0;
+  let updatedFiles = 0;
+  
+  const xcodeprojOld = path.join(projectPath, `${oldProjectName}.xcodeproj`);
+  const xcodeprojNew = path.join(projectPath, `${newProjectName}.xcodeproj`);
+  const xcworkspaceOld = path.join(projectPath, `${oldProjectName}.xcworkspace`);
+  const xcworkspaceNew = path.join(projectPath, `${newProjectName}.xcworkspace`);
+  
+  if (await fs.pathExists(xcodeprojOld) && !(await fs.pathExists(xcodeprojNew))) {
+    await fs.rename(xcodeprojOld, xcodeprojNew);
+    renamedContainers++;
+  }
+  if (await fs.pathExists(xcworkspaceOld) && !(await fs.pathExists(xcworkspaceNew))) {
+    await fs.rename(xcworkspaceOld, xcworkspaceNew);
+    renamedContainers++;
+  }
+  
+  const escapedOldName = oldProjectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const namePattern = new RegExp(escapedOldName, 'g');
+  
+  const allFiles = await getAllFiles(projectPath, {
+    includePods: true,
+    ignoreDirNames: ['build', 'DerivedData', '.git', 'node_modules']
+  });
+  
+  for (const filePath of allFiles) {
+    const fileName = path.basename(filePath);
+    const shouldUpdate =
+      fileName === 'Podfile' ||
+      fileName === 'Podfile.lock' ||
+      fileName === 'project.pbxproj' ||
+      fileName === 'contents.xcworkspacedata' ||
+      filePath.endsWith('.xcscheme') ||
+      filePath.endsWith('.plist');
+    
+    if (!shouldUpdate) {
+      continue;
+    }
+    
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const updated = content.replace(namePattern, newProjectName);
+      if (updated !== content) {
+        await fs.writeFile(filePath, updated, 'utf8');
+        updatedFiles++;
+      }
+    } catch (error) {
+      console.warn(`工程名替换跳过文件: ${filePath}`, error.message);
+    }
+  }
+  
+  return {
+    renamed: renamedContainers > 0 || updatedFiles > 0,
+    renamedContainers,
+    updatedFiles
+  };
 }
 
 // 选择图片文件夹

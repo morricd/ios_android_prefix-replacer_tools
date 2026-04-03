@@ -12,12 +12,26 @@ const selectSourceBtn = document.getElementById('selectSource');
 const selectTargetBtn = document.getElementById('selectTarget');
 const sourcePathGroup = document.getElementById('sourcePathGroup');
 const onlyReplaceProjectImagesCheckbox = document.getElementById('onlyReplaceProjectImages');
+const ignoreDirNamesInput = document.getElementById('ignoreDirNames');
 
 // iOS 配置
 const iosConfig = document.getElementById('iosConfig');
 const oldPrefixInput = document.getElementById('oldPrefix');
 const newPrefixInput = document.getElementById('newPrefix');
 const copyPodsIOSCheckbox = document.getElementById('copyPodsIOS');
+const renameProjectNameIOSCheckbox = document.getElementById('renameProjectNameIOS');
+const projectNameInputsIOS = document.getElementById('projectNameInputsIOS');
+const oldProjectNameIOSInput = document.getElementById('oldProjectNameIOS');
+const newProjectNameIOSInput = document.getElementById('newProjectNameIOS');
+const deleteCommentsIOSCheckbox = document.getElementById('deleteCommentsIOS');
+const handleXcassetsIOSCheckbox = document.getElementById('handleXcassetsIOS');
+const xcassetsInputsIOS = document.getElementById('xcassetsInputsIOS');
+const oldAssetPrefixIOSInput = document.getElementById('oldAssetPrefixIOS');
+const newAssetPrefixIOSInput = document.getElementById('newAssetPrefixIOS');
+const spamCodeOutIOSCheckbox = document.getElementById('spamCodeOutIOS');
+const spamCodeInputsIOS = document.getElementById('spamCodeInputsIOS');
+const spamCodePrefixIOSInput = document.getElementById('spamCodePrefixIOS');
+const spamMethodCountIOSInput = document.getElementById('spamMethodCountIOS');
 
 // Android 配置
 const androidConfig = document.getElementById('androidConfig');
@@ -27,6 +41,11 @@ const hasAndroidPrefixCheckbox = document.getElementById('hasAndroidPrefix');
 const androidPrefixInputs = document.getElementById('androidPrefixInputs');
 const oldAndroidPrefixInput = document.getElementById('oldAndroidPrefix');
 const newAndroidPrefixInput = document.getElementById('newAndroidPrefix');
+const deleteCommentsAndroidCheckbox = document.getElementById('deleteCommentsAndroid');
+const spamCodeOutAndroidCheckbox = document.getElementById('spamCodeOutAndroid');
+const spamCodeInputsAndroid = document.getElementById('spamCodeInputsAndroid');
+const spamCodePrefixAndroidInput = document.getElementById('spamCodePrefixAndroid');
+const spamMethodCountAndroidInput = document.getElementById('spamMethodCountAndroid');
 
 // 平台选择
 const platformRadios = document.querySelectorAll('input[name="platform"]');
@@ -73,6 +92,8 @@ platformRadios.forEach(radio => {
 
 if (onlyReplaceProjectImagesCheckbox) {
   onlyReplaceProjectImagesCheckbox.addEventListener('change', () => {
+    scanResults = null;
+    resultsDiv.innerHTML = '<div class="placeholder"><p>👆 模式已切换，请先扫描</p></div>';
     applyImageOnlyModeUI();
     updateButtonStates();
   });
@@ -121,6 +142,14 @@ function applyImageOnlyModeUI() {
   }
 }
 
+function parseIgnoreDirNames(value) {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 // Android 前缀复选框
 hasAndroidPrefixCheckbox.addEventListener('change', (e) => {
   androidPrefixInputs.style.display = e.target.checked ? 'flex' : 'none';
@@ -160,12 +189,49 @@ copyPodsIOSCheckbox.addEventListener('change', () => {
   updateButtonStates();
 });
 
+if (renameProjectNameIOSCheckbox) {
+  renameProjectNameIOSCheckbox.addEventListener('change', (e) => {
+    if (projectNameInputsIOS) {
+      projectNameInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
+    }
+    updateButtonStates();
+  });
+}
+
+if (handleXcassetsIOSCheckbox) {
+  handleXcassetsIOSCheckbox.addEventListener('change', (e) => {
+    if (xcassetsInputsIOS) {
+      xcassetsInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
+    }
+    updateButtonStates();
+  });
+}
+
+if (spamCodeOutIOSCheckbox) {
+  spamCodeOutIOSCheckbox.addEventListener('change', (e) => {
+    if (spamCodeInputsIOS) {
+      spamCodeInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
+    }
+    updateButtonStates();
+  });
+}
+
+if (spamCodeOutAndroidCheckbox) {
+  spamCodeOutAndroidCheckbox.addEventListener('change', (e) => {
+    if (spamCodeInputsAndroid) {
+      spamCodeInputsAndroid.style.display = e.target.checked ? 'flex' : 'none';
+    }
+    updateButtonStates();
+  });
+}
+
 // 选择源文件夹
 selectSourceBtn.addEventListener('click', async () => {
   const path = await ipcRenderer.invoke('select-source-folder');
   if (path) {
     sourcePath = path;
     sourcePathInput.value = path;
+    scanResults = null;
     updateButtonStates();
   }
 });
@@ -176,6 +242,7 @@ selectTargetBtn.addEventListener('click', async () => {
   if (path) {
     targetPath = path;
     targetPathInput.value = path;
+    scanResults = null;
     updateButtonStates();
   }
 });
@@ -183,6 +250,7 @@ selectTargetBtn.addEventListener('click', async () => {
 // 扫描文件
 scanBtn.addEventListener('click', async () => {
   const onlyReplaceProjectImages = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
+  const ignoreDirNames = parseIgnoreDirNames(ignoreDirNamesInput ? ignoreDirNamesInput.value : '');
   
   if (onlyReplaceProjectImages) {
     if (!targetPath) {
@@ -219,11 +287,13 @@ scanBtn.addEventListener('click', async () => {
       imageFolderPath,
       platform: currentPlatform,
       imageMappings,
-      imageAutoMatch
+      imageAutoMatch,
+      ignoreDirNames
     });
   } else {
     result = await ipcRenderer.invoke('scan-files', sourcePath, currentPlatform, {
-      includePods: currentPlatform === 'ios' ? copyPodsIOSCheckbox.checked : false
+      includePods: currentPlatform === 'ios' ? copyPodsIOSCheckbox.checked : false,
+      ignoreDirNames
     });
   }
   
@@ -247,7 +317,8 @@ processBtn.addEventListener('click', async () => {
   let options = {
     sourcePath,
     targetPath,
-    platform: currentPlatform
+    platform: currentPlatform,
+    ignoreDirNames: parseIgnoreDirNames(ignoreDirNamesInput ? ignoreDirNamesInput.value : '')
   };
   
   const replaceImagesEnabled = currentPlatform === 'ios'
@@ -300,6 +371,45 @@ processBtn.addEventListener('click', async () => {
     options.oldPrefix = oldPrefix || '';
     options.newPrefix = newPrefix || '';
     options.includePods = copyPodsIOSCheckbox.checked;
+    options.deleteComments = !!(deleteCommentsIOSCheckbox && deleteCommentsIOSCheckbox.checked);
+    
+    if (!imageOnlyMode && renameProjectNameIOSCheckbox && renameProjectNameIOSCheckbox.checked) {
+      const oldProjectName = oldProjectNameIOSInput ? oldProjectNameIOSInput.value.trim() : '';
+      const newProjectName = newProjectNameIOSInput ? newProjectNameIOSInput.value.trim() : '';
+      if (!oldProjectName || !newProjectName) {
+        showError('请输入旧工程名和新工程名，或取消勾选工程名修改');
+        return;
+      }
+      options.renameProjectName = true;
+      options.oldProjectName = oldProjectName;
+      options.newProjectName = newProjectName;
+    } else {
+      options.renameProjectName = false;
+    }
+    
+    if (!imageOnlyMode && handleXcassetsIOSCheckbox && handleXcassetsIOSCheckbox.checked) {
+      const oldAssetPrefix = oldAssetPrefixIOSInput ? oldAssetPrefixIOSInput.value.trim() : '';
+      const newAssetPrefix = newAssetPrefixIOSInput ? newAssetPrefixIOSInput.value.trim() : '';
+      if (!oldAssetPrefix || !newAssetPrefix) {
+        showError('请输入 xcassets 旧资源前缀和新资源前缀');
+        return;
+      }
+      options.handleXcassets = true;
+      options.oldAssetPrefix = oldAssetPrefix;
+      options.newAssetPrefix = newAssetPrefix;
+    } else {
+      options.handleXcassets = false;
+    }
+    
+    if (!imageOnlyMode && spamCodeOutIOSCheckbox && spamCodeOutIOSCheckbox.checked) {
+      const spamPrefix = spamCodePrefixIOSInput ? spamCodePrefixIOSInput.value.trim() : 'Spam';
+      const spamCount = parseInt(spamMethodCountIOSInput ? spamMethodCountIOSInput.value : '3', 10) || 3;
+      options.spamCodeOut = true;
+      options.spamCodePrefix = spamPrefix || 'Spam';
+      options.spamMethodCount = spamCount;
+    } else {
+      options.spamCodeOut = false;
+    }
     
     // 是否重命名文件和 Group（可选）
     const renameFilesAndGroups = document.getElementById('renameFilesAndGroups');
@@ -349,6 +459,8 @@ processBtn.addEventListener('click', async () => {
     
     options.oldPackage = oldPackage || '';
     options.newPackage = newPackage || '';
+    options.deleteComments = !!(deleteCommentsAndroidCheckbox && deleteCommentsAndroidCheckbox.checked);
+    options.handleXcassets = false;
     
     // 如果勾选了类前缀
     if (!imageOnlyMode && hasAndroidPrefixCheckbox.checked) {
@@ -385,6 +497,16 @@ processBtn.addEventListener('click', async () => {
     } else {
       options.addRandomCode = false;
     }
+    
+    if (!imageOnlyMode && spamCodeOutAndroidCheckbox && spamCodeOutAndroidCheckbox.checked) {
+      const spamPrefix = spamCodePrefixAndroidInput ? spamCodePrefixAndroidInput.value.trim() : 'Spam';
+      const spamCount = parseInt(spamMethodCountAndroidInput ? spamMethodCountAndroidInput.value : '3', 10) || 3;
+      options.spamCodeOut = true;
+      options.spamCodePrefix = spamPrefix || 'Spam';
+      options.spamMethodCount = spamCount;
+    } else {
+      options.spamCodeOut = false;
+    }
   }
   
   if (!targetPath || (!sourcePath && !imageOnlyMode)) {
@@ -410,6 +532,12 @@ processBtn.addEventListener('click', async () => {
     if (options.includePods) {
       confirmMsg += '\n复制 Pods: 是';
     }
+    if (options.renameProjectName) {
+      confirmMsg += `\n工程名: ${options.oldProjectName} -> ${options.newProjectName}`;
+    }
+    if (options.handleXcassets) {
+      confirmMsg += `\nxcassets: ${options.oldAssetPrefix} -> ${options.newAssetPrefix}`;
+    }
   } else if (currentPlatform === 'android' && !imageOnlyMode) {
     confirmMsg += `平台: Android\n旧包名: ${options.oldPackage}\n新包名: ${options.newPackage}`;
     if (options.hasPrefix) {
@@ -422,6 +550,12 @@ processBtn.addEventListener('click', async () => {
       ? '自动同名匹配（未配置规则）'
       : `手动规则 ${options.imageMappings.length} 条`;
     confirmMsg += `\n图片替换: 开启\n匹配模式: ${mappingSummary}\n替换后新文件名: ${options.imageRenameToNewName ? '是' : '否（保留旧名）'}\n未替换图片重编码: ${options.normalizeUnreplacedImages ? '是' : '否'}`;
+  }
+  if (!imageOnlyMode && options.deleteComments) {
+    confirmMsg += '\n清理注释: 开启';
+  }
+  if (!imageOnlyMode && options.spamCodeOut) {
+    confirmMsg += `\n独立垃圾代码: ${options.spamCodePrefix} (${options.spamMethodCount} methods/file)`;
   }
   
   const confirmed = confirm(confirmMsg);
@@ -514,7 +648,7 @@ function displayScanResults(result) {
     return;
   }
   
-  const fileTypeLabel = currentPlatform === 'ios' ? 'Swift' : 'Kotlin/Java/XML';
+  const fileTypeLabel = currentPlatform === 'ios' ? 'Swift/ObjC' : 'Kotlin/Java/XML';
   const data = result.data;
   
   const html = `
@@ -551,7 +685,7 @@ function displayScanResults(result) {
 // 显示处理结果
 function displayProcessResults(results) {
   const hasErrors = results.errors.length > 0;
-  const fileTypeLabel = currentPlatform === 'ios' ? 'Swift' : 'Kotlin/Java';
+  const fileTypeLabel = currentPlatform === 'ios' ? 'Swift/ObjC' : 'Kotlin/Java';
   
   const html = `
     <div class="process-results ${hasErrors ? 'has-errors' : 'success'}">
@@ -582,6 +716,24 @@ function displayProcessResults(results) {
         <div class="stat-item">
           <span class="stat-label">重组的目录:</span>
           <span class="stat-value">${results.movedDirs}</span>
+        </div>
+        ` : ''}
+        ${results.projectRenamed ? `
+        <div class="stat-item">
+          <span class="stat-label">工程名更新:</span>
+          <span class="stat-value">${results.projectRenamed}</span>
+        </div>
+        ` : ''}
+        ${results.renamedAssets ? `
+        <div class="stat-item">
+          <span class="stat-label">xcassets 改名:</span>
+          <span class="stat-value">${results.renamedAssets}</span>
+        </div>
+        ` : ''}
+        ${results.spamCodeFiles ? `
+        <div class="stat-item">
+          <span class="stat-label">独立垃圾代码文件:</span>
+          <span class="stat-value">${results.spamCodeFiles}</span>
         </div>
         ` : ''}
         ${results.renamedFilesAndGroups ? `
@@ -643,16 +795,19 @@ function updateButtonStates() {
     ? !!(replaceImagesIOSCheckbox && replaceImagesIOSCheckbox.checked)
     : !!(replaceImagesAndroidCheckbox && replaceImagesAndroidCheckbox.checked);
   const imageOnlyProcess = targetPath !== '' && replaceImagesEnabled && (onlyReplaceProjectImages || sourcePath === '');
-  const canProcess = (
+  const canProcessCode = (
     sourcePath !== '' &&
     targetPath !== '' &&
     scanResults !== null &&
+    scanResults.mode === 'code' &&
     !onlyReplaceProjectImages
-  ) || (
+  );
+  const canProcessImageOnly = (
     imageOnlyProcess &&
     scanResults !== null &&
     scanResults.mode === 'image-only'
   );
+  const canProcess = canProcessCode || canProcessImageOnly;
   
   scanBtn.disabled = !canScan;
   processBtn.disabled = !canProcess;
@@ -673,6 +828,18 @@ if (imageFolderPathIOSInput) imageFolderPathIOSInput.addEventListener('input', u
 if (imageFolderPathAndroidInput) imageFolderPathAndroidInput.addEventListener('input', updateButtonStates);
 if (normalizeUnreplacedImagesIOSCheckbox) normalizeUnreplacedImagesIOSCheckbox.addEventListener('change', updateButtonStates);
 if (normalizeUnreplacedImagesAndroidCheckbox) normalizeUnreplacedImagesAndroidCheckbox.addEventListener('change', updateButtonStates);
+if (ignoreDirNamesInput) ignoreDirNamesInput.addEventListener('input', () => {
+  scanResults = null;
+  updateButtonStates();
+});
+if (oldProjectNameIOSInput) oldProjectNameIOSInput.addEventListener('input', updateButtonStates);
+if (newProjectNameIOSInput) newProjectNameIOSInput.addEventListener('input', updateButtonStates);
+if (oldAssetPrefixIOSInput) oldAssetPrefixIOSInput.addEventListener('input', updateButtonStates);
+if (newAssetPrefixIOSInput) newAssetPrefixIOSInput.addEventListener('input', updateButtonStates);
+if (spamCodePrefixIOSInput) spamCodePrefixIOSInput.addEventListener('input', updateButtonStates);
+if (spamMethodCountIOSInput) spamMethodCountIOSInput.addEventListener('input', updateButtonStates);
+if (spamCodePrefixAndroidInput) spamCodePrefixAndroidInput.addEventListener('input', updateButtonStates);
+if (spamMethodCountAndroidInput) spamMethodCountAndroidInput.addEventListener('input', updateButtonStates);
 
 // 初始化
 applyImageOnlyModeUI();

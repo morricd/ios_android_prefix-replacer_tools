@@ -11,7 +11,8 @@
     "build:all": "electron-builder --mac --win",
     "build:dmg": "electron-builder --mac dmg",
     "build:exe": "electron-builder --win nsis",
-    "test:regression": "node tests/test-ios-processor-regression.js && node tests/test-android-prefix-regression.js && node tests/test-android-package-boundary.js"
+    "test:regression": "node tests/test-ios-processor-regression.js && node tests/test-android-prefix-regression.js && node tests/test-android-package-boundary.js",
+    "cli": "node src/cli/index.js"
   },
   "keywords": ["electron", "swift", "rename", "prefix"],
   "author": "",

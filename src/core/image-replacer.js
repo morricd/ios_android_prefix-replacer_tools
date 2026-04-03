@@ -3,9 +3,9 @@ const path = require('path');
 
 // 图片替换处理
 async function replaceImages(projectPath, imageFolderPath, imageMappings, platform, options = {}) {
-  const { renameToNewName = false, autoMatchByFileName = false } = options;
+  const { renameToNewName = false, autoMatchByFileName = false, ignoreDirNames = [] } = options;
   let mappingsToRun = Array.isArray(imageMappings) ? [...imageMappings] : [];
-  const sourceIndex = await buildImageSourceIndex(imageFolderPath);
+  const sourceIndex = await buildImageSourceIndex(imageFolderPath, ignoreDirNames);
   
   if (mappingsToRun.length === 0 && autoMatchByFileName) {
     mappingsToRun = Array.from(sourceIndex.names).map((fileName) => ({
@@ -32,7 +32,7 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
         const replacedPaths = await replaceIOSImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
         results.replacedFiles.push(...replacedPaths);
       } else {
-        const replacedPaths = await replaceAndroidImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex });
+        const replacedPaths = await replaceAndroidImage(projectPath, imageFolderPath, mapping, { renameToNewName, sourceIndex, ignoreDirNames });
         results.replacedFiles.push(...replacedPaths);
       }
       results.success++;
@@ -50,9 +50,9 @@ async function replaceImages(projectPath, imageFolderPath, imageMappings, platfo
 }
 
 async function previewImageReplacements(projectPath, imageFolderPath, imageMappings, platform, options = {}) {
-  const { autoMatchByFileName = false } = options;
+  const { autoMatchByFileName = false, ignoreDirNames = [] } = options;
   let mappingsToRun = Array.isArray(imageMappings) ? [...imageMappings] : [];
-  const sourceIndex = await buildImageSourceIndex(imageFolderPath);
+  const sourceIndex = await buildImageSourceIndex(imageFolderPath, ignoreDirNames);
   
   if (mappingsToRun.length === 0 && autoMatchByFileName) {
     mappingsToRun = Array.from(sourceIndex.names).map((fileName) => ({
@@ -83,7 +83,7 @@ async function previewImageReplacements(projectPath, imageFolderPath, imageMappi
     
     const targets = platform === 'ios'
       ? await findIOSReplacementTargets(projectPath, mapping.oldName)
-      : await findAndroidReplacementTargets(projectPath, mapping.oldName);
+      : await findAndroidReplacementTargets(projectPath, mapping.oldName, ignoreDirNames);
     
     if (targets.length === 0) {
       missing.push({
@@ -112,8 +112,8 @@ async function previewImageReplacements(projectPath, imageFolderPath, imageMappi
   };
 }
 
-async function buildImageSourceIndex(imageFolderPath) {
-  const imageFiles = await listImageFiles(imageFolderPath);
+async function buildImageSourceIndex(imageFolderPath, ignoreDirNames = []) {
+  const imageFiles = await listImageFiles(imageFolderPath, ignoreDirNames);
   const byName = new Map();
   
   for (const filePath of imageFiles) {
@@ -142,7 +142,7 @@ async function resolveNewImagePath(imageFolderPath, fileName, sourceIndex) {
   return directPath;
 }
 
-async function listImageFiles(rootDir) {
+async function listImageFiles(rootDir, ignoreDirNames = []) {
   const imagePaths = [];
   const imageExtPattern = /\.(png|jpg|jpeg|webp|gif|bmp|svg|pdf)$/i;
   
@@ -157,6 +157,9 @@ async function listImageFiles(rootDir) {
     for (const item of items) {
       const fullPath = path.join(currentDir, item.name);
       if (item.isDirectory()) {
+        if (isIgnoredDir(item.name, ignoreDirNames)) {
+          continue;
+        }
         await walk(fullPath);
       } else if (imageExtPattern.test(item.name)) {
         imagePaths.push(fullPath);
@@ -263,11 +266,11 @@ async function findIOSReplacementTargets(projectPath, oldName) {
 
 // 替换 Android 图片
 async function replaceAndroidImage(projectPath, imageFolderPath, mapping, options = {}) {
-  const { renameToNewName = false, sourceIndex = null } = options;
+  const { renameToNewName = false, sourceIndex = null, ignoreDirNames = [] } = options;
   const { oldName, newName } = mapping;
   
   // 查找所有 res 目录
-  const resDirectories = await findAndroidResDirectories(projectPath);
+  const resDirectories = await findAndroidResDirectories(projectPath, ignoreDirNames);
   if (resDirectories.length === 0) {
     throw new Error('未找到 res 目录');
   }
@@ -319,11 +322,12 @@ async function replaceAndroidImage(projectPath, imageFolderPath, mapping, option
   return replacedPaths;
 }
 
-async function normalizeUnreplacedImages(projectPath, platform, replacedFiles = []) {
+async function normalizeUnreplacedImages(projectPath, platform, replacedFiles = [], options = {}) {
+  const { ignoreDirNames = [] } = options;
   const replacedSet = new Set((replacedFiles || []).map((filePath) => path.resolve(filePath)));
   const candidates = platform === 'ios'
     ? await listIOSImageFiles(projectPath)
-    : await listAndroidImageFiles(projectPath);
+    : await listAndroidImageFiles(projectPath, ignoreDirNames);
   
   let normalizedCount = 0;
   for (const filePath of candidates) {
@@ -369,8 +373,8 @@ async function listIOSImageFiles(projectPath) {
   return results;
 }
 
-async function listAndroidImageFiles(projectPath) {
-  const resDirs = await findAndroidResDirectories(projectPath);
+async function listAndroidImageFiles(projectPath, ignoreDirNames = []) {
+  const resDirs = await findAndroidResDirectories(projectPath, ignoreDirNames);
   const results = [];
   const supported = /\.(png|jpe?g)$/i;
   
@@ -476,9 +480,9 @@ function crc32(buffer) {
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
-async function findAndroidReplacementTargets(projectPath, oldName) {
+async function findAndroidReplacementTargets(projectPath, oldName, ignoreDirNames = []) {
   const targets = [];
-  const resDirectories = await findAndroidResDirectories(projectPath);
+  const resDirectories = await findAndroidResDirectories(projectPath, ignoreDirNames);
   
   for (const resDir of resDirectories) {
     const drawableDirs = await findDrawableDirectories(resDir);
@@ -542,7 +546,7 @@ async function findImageset(assetsDir, imageName) {
 }
 
 // 查找 Android res 目录
-async function findAndroidResDirectories(projectPath) {
+async function findAndroidResDirectories(projectPath, ignoreDirNames = []) {
   const resDirs = [];
   
   async function search(dir, depth = 0) {
@@ -557,6 +561,9 @@ async function findAndroidResDirectories(projectPath) {
           
           // 跳过某些目录
           if (item.name === 'build' || item.name === 'node_modules' || item.name.startsWith('.')) {
+            continue;
+          }
+          if (isIgnoredDir(item.name, ignoreDirNames)) {
             continue;
           }
           
@@ -574,6 +581,10 @@ async function findAndroidResDirectories(projectPath) {
   
   await search(projectPath);
   return resDirs;
+}
+
+function isIgnoredDir(dirName, ignoreDirNames = []) {
+  return ignoreDirNames.includes(dirName);
 }
 
 // 查找 drawable 目录
