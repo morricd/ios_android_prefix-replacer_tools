@@ -19,11 +19,11 @@ jobs:
         include:
           - os_name: macOS
             runner: macos-latest
-            build_cmd: npm run build:mac
+            build_cmd: npm run build:mac -- --publish never
             artifact_name: mac-build
           - os_name: Windows
             runner: windows-latest
-            build_cmd: npm run build:win
+            build_cmd: npm run build:win -- --publish never
             artifact_name: windows-build
 
     steps:
