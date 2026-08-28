@@ -155,6 +155,32 @@ ipcMain.handle('scan-image-replacements', async (event, options = {}) => {
   }
 });
 
+ipcMain.handle('inspect-folder', async (event, folderPath) => {
+  try {
+    if (!folderPath || !await fs.pathExists(folderPath)) {
+      return {
+        success: true,
+        exists: false,
+        entryCount: 0,
+        entries: []
+      };
+    }
+
+    const entries = await fs.readdir(folderPath);
+    return {
+      success: true,
+      exists: true,
+      entryCount: entries.length,
+      entries: entries.slice(0, 10)
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // 执行替换
 ipcMain.handle('process-files', async (event, options) => {
   const { sourcePath, targetPath, platform = 'ios' } = options;

@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const nodePath = require('path');
 
 let sourcePath = '';
 let targetPath = '';
@@ -102,8 +103,10 @@ if (onlyReplaceProjectImagesCheckbox) {
 function setElementVisible(element, visible) {
   if (!element) return;
   if (visible) {
-    const originalDisplay = element.dataset.originalDisplay || '';
-    element.style.display = originalDisplay;
+    if (element.dataset.originalDisplay !== undefined) {
+      element.style.display = element.dataset.originalDisplay;
+      delete element.dataset.originalDisplay;
+    }
   } else {
     if (element.dataset.originalDisplay === undefined) {
       element.dataset.originalDisplay = element.style.display || '';
@@ -112,11 +115,26 @@ function setElementVisible(element, visible) {
   }
 }
 
+function syncOptionalSection(checkbox, section, expandedDisplay = 'flex') {
+  if (!checkbox || !section) return;
+  section.style.display = checkbox.checked ? expandedDisplay : 'none';
+}
+
+function syncOptionalSections() {
+  syncOptionalSection(renameProjectNameIOSCheckbox, projectNameInputsIOS);
+  syncOptionalSection(handleXcassetsIOSCheckbox, xcassetsInputsIOS);
+  syncOptionalSection(spamCodeOutIOSCheckbox, spamCodeInputsIOS);
+  syncOptionalSection(renameFilesAndGroupsCheckbox, filesGroupsInputs);
+}
+
 function applyImageOnlyModeUI() {
   const imageOnlyMode = !!(onlyReplaceProjectImagesCheckbox && onlyReplaceProjectImagesCheckbox.checked);
   
   setElementVisible(sourcePathGroup, !imageOnlyMode);
   codeOnlyOptionElements.forEach((element) => setElementVisible(element, !imageOnlyMode));
+  if (!imageOnlyMode) {
+    syncOptionalSections();
+  }
   
   if (imageOnlyMode) {
     if (replaceImagesIOSCheckbox) {
@@ -150,6 +168,118 @@ function parseIgnoreDirNames(value) {
     .filter((item) => item.length > 0);
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeSelectedPath(value) {
+  if (!value) return '';
+  return nodePath.resolve(value.trim());
+}
+
+function areSameSelectedPath(firstPath, secondPath) {
+  const first = normalizeSelectedPath(firstPath);
+  const second = normalizeSelectedPath(secondPath);
+  if (!first || !second) return false;
+  return process.platform === 'win32'
+    ? first.toLowerCase() === second.toLowerCase()
+    : first === second;
+}
+
+function showConfirmDialog({
+  title = '确定要执行替换吗？',
+  mode,
+  source,
+  target,
+  summaryLines = [],
+  selectedOptions = [],
+  warnings = [],
+  blockMessage = ''
+}) {
+  return new Promise((resolve) => {
+    const confirmCode = String(Math.floor(100000 + Math.random() * 900000));
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-modal-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-modal-dialog">
+        <div class="confirm-modal-header">
+          <h3>${escapeHtml(title)}</h3>
+        </div>
+        <div class="confirm-modal-body">
+          ${blockMessage ? `<div class="confirm-alert confirm-alert-danger">${escapeHtml(blockMessage)}</div>` : ''}
+          ${warnings.map((warning) => `<div class="confirm-alert confirm-alert-warning">${escapeHtml(warning)}</div>`).join('')}
+          <div class="confirm-section">
+            <div class="confirm-section-title">项目路径：</div>
+            <div class="confirm-line"><span>模式:</span><strong>${escapeHtml(mode)}</strong></div>
+            ${source ? `<div class="confirm-line confirm-path-line confirm-source-path"><span>源文件夹:</span><strong>${escapeHtml(source)}</strong></div>` : ''}
+            <div class="confirm-line confirm-path-line confirm-target-path"><span>目标文件夹:</span><strong>${escapeHtml(target)}</strong></div>
+          </div>
+          <div class="confirm-section">
+            <div class="confirm-section-title">项目生成配置：</div>
+            ${summaryLines.map((line) => `<div class="confirm-line">${escapeHtml(line)}</div>`).join('')}
+          </div>
+          ${selectedOptions.length ? `
+          <div class="confirm-section confirm-selected-options">
+            <div class="confirm-section-title">已勾选功能</div>
+            <ul>
+              ${selectedOptions.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+            </ul>
+          </div>
+          ` : ''}
+          <div class="confirm-section confirm-code-section">
+            <div class="confirm-section-title">执行校验</div>
+            <div class="confirm-code-row">
+              <span class="confirm-code-number">${escapeHtml(confirmCode)}</span>
+              <input type="text" id="confirmCodeInput" class="confirm-code-input" placeholder="请输入左侧数字" inputmode="numeric" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="confirm-modal-actions">
+          <button type="button" class="btn btn-secondary" id="confirmCancelBtn">取消</button>
+          <button type="button" class="btn btn-primary" id="confirmOkBtn" disabled>确定执行</button>
+        </div>
+      </div>
+    `;
+
+    const close = (value) => {
+      overlay.remove();
+      resolve(value);
+    };
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('#confirmCancelBtn').addEventListener('click', () => close(false));
+    const okButton = overlay.querySelector('#confirmOkBtn');
+    const codeInput = overlay.querySelector('#confirmCodeInput');
+    const updateConfirmState = () => {
+      if (!okButton) return;
+      okButton.disabled = !!blockMessage || !codeInput || codeInput.value.trim() !== confirmCode;
+    };
+    if (codeInput) {
+      codeInput.addEventListener('input', updateConfirmState);
+      codeInput.focus();
+    }
+    if (okButton) {
+      okButton.addEventListener('click', () => close(true));
+    }
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close(false);
+    });
+  });
+}
+
+async function inspectTargetFolder(target) {
+  if (!target) {
+    return { success: true, entryCount: 0, entries: [] };
+  }
+  const result = await ipcRenderer.invoke('inspect-folder', target);
+  return result && result.success ? result : { success: true, entryCount: 0, entries: [] };
+}
+
 // Android 前缀复选框
 hasAndroidPrefixCheckbox.addEventListener('change', (e) => {
   androidPrefixInputs.style.display = e.target.checked ? 'flex' : 'none';
@@ -179,7 +309,7 @@ const renameFilesAndGroupsCheckbox = document.getElementById('renameFilesAndGrou
 const filesGroupsInputs = document.getElementById('filesGroupsInputs');
 
 renameFilesAndGroupsCheckbox.addEventListener('change', (e) => {
-  filesGroupsInputs.style.display = e.target.checked ? 'flex' : 'none';
+  syncOptionalSection(e.target, filesGroupsInputs);
   updateButtonStates();
 });
 
@@ -191,27 +321,21 @@ copyPodsIOSCheckbox.addEventListener('change', () => {
 
 if (renameProjectNameIOSCheckbox) {
   renameProjectNameIOSCheckbox.addEventListener('change', (e) => {
-    if (projectNameInputsIOS) {
-      projectNameInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
-    }
+    syncOptionalSection(e.target, projectNameInputsIOS);
     updateButtonStates();
   });
 }
 
 if (handleXcassetsIOSCheckbox) {
   handleXcassetsIOSCheckbox.addEventListener('change', (e) => {
-    if (xcassetsInputsIOS) {
-      xcassetsInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
-    }
+    syncOptionalSection(e.target, xcassetsInputsIOS);
     updateButtonStates();
   });
 }
 
 if (spamCodeOutIOSCheckbox) {
   spamCodeOutIOSCheckbox.addEventListener('change', (e) => {
-    if (spamCodeInputsIOS) {
-      spamCodeInputsIOS.style.display = e.target.checked ? 'flex' : 'none';
-    }
+    syncOptionalSection(e.target, spamCodeInputsIOS);
     updateButtonStates();
   });
 }
@@ -514,34 +638,50 @@ processBtn.addEventListener('click', async () => {
     return;
   }
   
-  if (!imageOnlyMode && sourcePath === targetPath) {
-    showError('源文件夹和目标文件夹不能相同');
-    return;
+  const samePathBlocked = !imageOnlyMode && areSameSelectedPath(sourcePath, targetPath);
+  const targetInfo = await inspectTargetFolder(targetPath);
+  const warnings = [];
+  if (targetInfo.entryCount > 0) {
+    const entryPreview = targetInfo.entries && targetInfo.entries.length
+      ? `：${targetInfo.entries.join('、')}${targetInfo.entryCount > targetInfo.entries.length ? ' ...' : ''}`
+      : '';
+    warnings.push(`目标文件夹已有内容（${targetInfo.entryCount} 项）${entryPreview}`);
   }
-  
-  // 确认信息
-  let confirmMsg = '确定要执行替换吗？\n\n';
+
+  const summaryLines = [];
+  const selectedOptions = [];
   if (imageOnlyMode) {
-    confirmMsg += `模式: 仅替换图片\n目标目录: ${targetPath}\n\n`;
+    summaryLines.push('模式: 仅替换图片');
   } else {
-    confirmMsg += `源文件夹: ${sourcePath}\n目标文件夹: ${targetPath}\n\n`;
+    summaryLines.push('模式: 代码和资源处理');
   }
   
   if (currentPlatform === 'ios' && !imageOnlyMode) {
-    confirmMsg += `平台: iOS\n旧前缀: ${options.oldPrefix}\n新前缀: ${options.newPrefix}`;
+    summaryLines.push(`平台: iOS`);
+    summaryLines.push(`类前缀: ${options.oldPrefix} -> ${options.newPrefix}`);
     if (options.includePods) {
-      confirmMsg += '\n复制 Pods: 是';
+      selectedOptions.push('复制 Pods 目录');
     }
     if (options.renameProjectName) {
-      confirmMsg += `\n工程名: ${options.oldProjectName} -> ${options.newProjectName}`;
+      selectedOptions.push(`一键修改 iOS 工程名: ${options.oldProjectName} -> ${options.newProjectName}`);
     }
     if (options.handleXcassets) {
-      confirmMsg += `\nxcassets: ${options.oldAssetPrefix} -> ${options.newAssetPrefix}`;
+      selectedOptions.push(`批量重命名 xcassets 资源: ${options.oldAssetPrefix} -> ${options.newAssetPrefix}`);
+    }
+    if (options.renameFilesAndGroups) {
+      selectedOptions.push(`同时修改文件和 Xcode Group 前缀: ${options.oldFileGroupPrefix} -> ${options.newFileGroupPrefix}`);
+    }
+    if (options.addRandomCode) {
+      selectedOptions.push(`添加随机代码: ${options.randomPrefix} (${options.randomMethodCount} methods/file, ${options.randomVarCount} vars/file)`);
     }
   } else if (currentPlatform === 'android' && !imageOnlyMode) {
-    confirmMsg += `平台: Android\n旧包名: ${options.oldPackage}\n新包名: ${options.newPackage}`;
+    summaryLines.push(`平台: Android`);
+    summaryLines.push(`包名: ${options.oldPackage} -> ${options.newPackage}`);
     if (options.hasPrefix) {
-      confirmMsg += `\n旧前缀: ${options.oldPrefix}\n新前缀: ${options.newPrefix}`;
+      selectedOptions.push(`修改 Android 类前缀: ${options.oldPrefix} -> ${options.newPrefix}`);
+    }
+    if (options.addRandomCode) {
+      selectedOptions.push(`添加随机代码: ${options.randomPrefix} (${options.randomMethodCount} methods/file, ${options.randomVarCount} vars/file)`);
     }
   }
   
@@ -549,18 +689,35 @@ processBtn.addEventListener('click', async () => {
     const mappingSummary = options.imageAutoMatch
       ? '自动同名匹配（未配置规则）'
       : `手动规则 ${options.imageMappings.length} 条`;
-    confirmMsg += `\n图片替换: 开启\n匹配模式: ${mappingSummary}\n替换后新文件名: ${options.imageRenameToNewName ? '是' : '否（保留旧名）'}\n未替换图片重编码: ${options.normalizeUnreplacedImages ? '是' : '否'}`;
+    selectedOptions.push(`图片替换: ${mappingSummary}`);
+    if (options.imageRenameToNewName) {
+      selectedOptions.push('替换后使用新图片文件名');
+    }
+    if (options.normalizeUnreplacedImages) {
+      selectedOptions.push('未替换图片重编码');
+    }
   }
   if (!imageOnlyMode && options.deleteComments) {
-    confirmMsg += '\n清理注释: 开启';
+    selectedOptions.push('清理代码注释');
   }
   if (!imageOnlyMode && options.spamCodeOut) {
-    confirmMsg += `\n独立垃圾代码: ${options.spamCodePrefix} (${options.spamMethodCount} methods/file)`;
+    selectedOptions.push(`输出独立垃圾代码文件: ${options.spamCodePrefix} (${options.spamMethodCount} methods/file)`);
   }
   
-  const confirmed = confirm(confirmMsg);
+  const confirmed = await showConfirmDialog({
+    mode: imageOnlyMode ? '仅替换图片' : '代码和资源处理',
+    source: imageOnlyMode ? '' : sourcePath,
+    target: targetPath,
+    summaryLines,
+    selectedOptions,
+    warnings,
+    blockMessage: samePathBlocked ? '源文件夹和目标文件夹不能相同，请重新选择后再执行。' : ''
+  });
   
   if (!confirmed) {
+    if (samePathBlocked) {
+      showError('源文件夹和目标文件夹不能相同');
+    }
     return;
   }
   
